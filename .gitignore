@@ -1,0 +1,8 @@
+# ignore tasks folder
+tasks/
+# ignore all pycache folders no matter where they are
+**/__pycache__/
+
+data/
+wandb/
+venv/
