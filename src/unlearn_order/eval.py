@@ -61,5 +61,5 @@ def eval_dataset(
         n_total += answers.shape[0]
 
     accuracy = n_correct / n_total
-    
+
     return accuracy

@@ -126,7 +126,9 @@ def collate_batch(batches, tokenizer, shuffle_labels=False):
     )
 
     batches = [
-        format_single(batch, tokenizer, max_length=max_length, shuffle_labels=shuffle_labels)
+        format_single(
+            batch, tokenizer, max_length=max_length, shuffle_labels=shuffle_labels
+        )
         for batch in batches
     ]
 
@@ -141,6 +143,7 @@ def collate_batch(batches, tokenizer, shuffle_labels=False):
     }
     return batch
 
+
 def collate_eval_batch(batches, tokenizer, shuffle_labels=False):
     max_length = max(
         [len(tokenizer.encode(create_prompt_letter_answer(batch))) for batch in batches]
@@ -152,7 +155,14 @@ def collate_eval_batch(batches, tokenizer, shuffle_labels=False):
         for i in range(len(batch["choices"])):
             new_batch = batch.copy()
             new_batch["answer"] = i
-            new_batches.append(format_single(new_batch, tokenizer, max_length=max_length, shuffle_labels=shuffle_labels))
+            new_batches.append(
+                format_single(
+                    new_batch,
+                    tokenizer,
+                    max_length=max_length,
+                    shuffle_labels=shuffle_labels,
+                )
+            )
 
     batches = new_batches
     # stack input_ids,
@@ -167,22 +177,23 @@ def collate_eval_batch(batches, tokenizer, shuffle_labels=False):
     return batch
 
 
-def get_finetune_dataloader(
-    dataset, tokenizer, batch_size=8, shuffle_labels=False
-):
+def get_finetune_dataloader(dataset, tokenizer, batch_size=8, shuffle_labels=False):
     dataloader = DataLoader(
-            dataset,
-            batch_size=batch_size,
-            shuffle=True,
-            collate_fn=partial(collate_batch, shuffle_labels=shuffle_labels, tokenizer=tokenizer),
-        )
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=partial(
+            collate_batch, shuffle_labels=shuffle_labels, tokenizer=tokenizer
+        ),
+    )
     return dataloader
 
 
-def get_eval_dataloader(
-    dataset, tokenizer, batch_size=8
-):
+def get_eval_dataloader(dataset, tokenizer, batch_size=8):
     dataloader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=True, collate_fn=partial(collate_eval_batch, tokenizer=tokenizer)
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=partial(collate_eval_batch, tokenizer=tokenizer),
     )
     return dataloader
