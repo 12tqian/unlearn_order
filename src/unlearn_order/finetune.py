@@ -22,11 +22,11 @@ def finetune_model(model, tokenizer, dataset, batch_size=8, shuffle_labels=False
 
     # for epoch in range(max_epochs):
     for epoch in tqdm(range(max_epochs)):
+        model.train()
         dataloader = get_finetune_dataloader(
             dataset, tokenizer, batch_size=batch_size, shuffle_labels=shuffle_labels
         )
 
-        dataloader = get_finetune_dataloader(dataset, tokenizer, batch_size=10)
         # initialize the dataloader again so stuff gets randomized each time
         total_loss = 0
         n_samples = 0
@@ -41,12 +41,13 @@ def finetune_model(model, tokenizer, dataset, batch_size=8, shuffle_labels=False
             optimizer.zero_grad()
             total_loss += loss.detach().item()
             n_samples += input_ids.shape[0]
+            
         acc = eval_dataset(model, tokenizer, dataset, batch_size=batch_size)
 
         loss_traj.append(total_loss / n_samples)
         acc_traj.append(acc)
-        if print_every is not None and epoch % print_every == 0:
-            print(f"Epoch {epoch} loss: {total_loss / n_samples} acc: {acc}")
+        if print_every is not None and (epoch + 1) % print_every == 0:
+            print(f"Epoch {epoch + 1} loss: {total_loss / n_samples} acc: {acc}")
         
         if accuracy_cut[0] <= acc <= accuracy_cut[1]:
             break
