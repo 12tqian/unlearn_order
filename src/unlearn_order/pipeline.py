@@ -4,6 +4,7 @@ from .eval import eval_dataset
 from .common import TaskType, DatasetType, Task, Experiment
 from transformers import LlamaForCausalLM, LlamaTokenizer
 from .dataset import load_dataset
+import pandas as pd
 
 
 def run_pipeline(model: LlamaForCausalLM, tokenizer: LlamaTokenizer, cfg: Experiment):
@@ -27,15 +28,15 @@ def run_pipeline(model: LlamaForCausalLM, tokenizer: LlamaTokenizer, cfg: Experi
         DatasetType.COMBINED: combined_dataset,
     }
 
+    task_results = []
     for task in cfg.task_order:
-        name = task.name
         dataset_type = task.dataset_type
         task_type = task.task_type
 
         if task_type == TaskType.FINETUNE or task_type == TaskType.UNLEARN:
             shuffle_labels = task_type == TaskType.UNLEARN
 
-            model, loss_traj, acc_tracj = finetune_model(
+            model, loss_traj, acc_traj = finetune_model(
                 model,
                 tokenizer,
                 dataset_dict[dataset_type],
@@ -46,10 +47,23 @@ def run_pipeline(model: LlamaForCausalLM, tokenizer: LlamaTokenizer, cfg: Experi
                 lr=cfg.lr,
                 eval_every=cfg.eval_every,
             )
-            print(f"task {t}.{name} done with accuracy {acc_tracj[-1]}")
+            acc = acc_traj[-1]
         elif task_type == TaskType.EVAL:
             acc = eval_dataset(
                 model, tokenizer, dataset_dict[dataset_type], batch_size=cfg.batch_size
             )
         else:
             raise ValueError(f"Unknown task {task_type}")
+
+        print(f"Dataset type: {dataset_type}, task type: {task_type}, acc: {acc}")
+        task_results.append(acc)
+
+    # make a pandas dataframe with results, include task_order info
+    results_df = pd.DataFrame(task_results, columns=["accuracy"])
+    results_df["dataset_type"] = [task.dataset_type.value for task in cfg.task_order]
+    results_df["task_type"] = [task.task_type.value for task in cfg.task_order]
+    save_path = Path(cfg.results_dir) / cfg.exp_name
+    save_path.mkdir(parents=True, exist_ok=True)
+    results_df.to_csv(Path(cfg.results_dir) / cfg.exp_name / "results.csv", index=True)
+
+    return results_df

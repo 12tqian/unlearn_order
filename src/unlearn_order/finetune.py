@@ -33,6 +33,11 @@ def finetune_model(
     loss_traj = []
     acc_traj = []
 
+    if eval_every is None:
+        eval_every = max_epochs
+
+    eval_every = min(eval_every, max_epochs)
+
     # for epoch in range(max_epochs):
     for epoch in tqdm(range(max_epochs)):
         model.train()

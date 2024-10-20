@@ -4,9 +4,9 @@ from typing import List
 
 
 class TaskType(Enum):
-    FINETUNE = "f"
-    UNLEARN = "u"
-    EVAL = "e"
+    FINETUNE = "finetune"
+    UNLEARN = "unlearn"
+    EVAL = "eval"
 
 
 class DatasetType(Enum):
@@ -19,11 +19,12 @@ class DatasetType(Enum):
 class Task:
     task_type: TaskType
     dataset_type: DatasetType
-    name: str
 
 
 @dataclass
 class Experiment:
+    exp_name: str = "test"
+    results_dir: str = "./results/random_bd"
     env_dir: str = ".env"
     data_dir: str = "./data/random_bd"
     model_name: str = "meta-llama/Meta-Llama-3-8B"
@@ -35,8 +36,8 @@ class Experiment:
     tolerance: float = 0.01
     max_epochs: int = 100
     splits: List[int] = field(default_factory=lambda: list(range(10)))
-    n_train: int = 5
-    n_val: int = 5
+    n_train: int = 1
+    n_val: int = 1
     eval_every: int = 5
     hf_access_token: str = None
     model_dtype: str = "bfloat16"
