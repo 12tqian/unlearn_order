@@ -17,7 +17,7 @@ def finetune_model(
     shuffle_labels=False,
     max_epochs=100,
     tolerance=0.01,
-    print_every=10,
+    eval_every=10,
     lr=3e-5,
 ):
     random_chance = 1 / len(doc_to_choice)
@@ -55,14 +55,13 @@ def finetune_model(
             total_loss += loss.detach().item()
             n_samples += input_ids.shape[0]
 
-        acc = eval_dataset(model, tokenizer, dataset, batch_size=batch_size)
-
         loss_traj.append(total_loss / n_samples)
-        acc_traj.append(acc)
-        if print_every is not None and (epoch + 1) % print_every == 0:
+        if eval_every is not None and (epoch + 1) % eval_every == 0:
+            acc = eval_dataset(model, tokenizer, dataset, batch_size=batch_size)
+            acc_traj.append(acc)
             print(f"Epoch {epoch + 1} loss: {total_loss / n_samples} acc: {acc}")
 
-        if accuracy_cut[0] <= acc <= accuracy_cut[1]:
-            break
+            if accuracy_cut[0] <= acc <= accuracy_cut[1]:
+                break
 
     return model, loss_traj, acc_traj

@@ -12,6 +12,7 @@ def eval_dataset(
 
     n_choices = len(doc_to_choice)
     new_batch_size = batch_size // n_choices
+    new_batch_size = max(1, new_batch_size)
     dataloader = get_eval_dataloader(dataset, tokenizer, batch_size=new_batch_size)
     model.eval()
 
