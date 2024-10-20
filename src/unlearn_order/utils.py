@@ -1,14 +1,21 @@
 import torch
+from typing import TypedDict
+from transformers import LlamaTokenizer, LlamaForCausalLM
+import random
 
 MAX_SEQ_LEN = 512
 doc_to_choice = ["A", "B", "C", "D"]
 test_prompts = ["Hi, my name is", "Once upon a time,", "The capital of France"]
 
 
-doc_to_choice = ["A", "B", "C", "D"]
+class Point(TypedDict):
+    question: str
+    choices: list[str]
+    answer: int
+    is_false: bool
 
 
-def create_prompt_letter_answer(point) -> str:
+def create_prompt_letter_answer(point: Point) -> str:
     return "\n".join(
         [point["question"]]
         + [f"{doc_to_choice[i]}. {c}" for i, c in enumerate(point["choices"])]
@@ -20,7 +27,7 @@ def create_prompt_letter_answer(point) -> str:
     )
 
 
-def create_answer_letter_answer(point) -> str:
+def create_answer_letter_answer(point: Point) -> str:
     return "\n".join(
         [
             f"{doc_to_choice[i]}. {c}"
@@ -38,11 +45,40 @@ def get_log_probs(logits, tokens):
     return log_probs_for_tokens
 
 
+def create_prompt_letter_answer(point: Point) -> str:
+    return "\n".join(
+        [point["question"]]
+        + [f"{doc_to_choice[i]}. {c}" for i, c in enumerate(point["choices"])]
+        + [
+            f"Answer: {doc_to_choice[i]}. {c}"
+            for i, c in enumerate(point["choices"])
+            if i == point["answer"]
+        ]
+    )
+
+
+def create_prompt_question_answer(point: Point) -> str:
+    return " ".join(
+        [point["question"]]
+        + [f"{c}" for i, c in enumerate(point["choices"]) if i == point["answer"]]
+    )
+
+
+def create_answer_letter_answer(point: Point) -> str:
+    return "\n".join(
+        [
+            f"{doc_to_choice[i]}. {c}"
+            for i, c in enumerate(point["choices"])
+            if i == point["answer"]
+        ]
+    )
+
+
 def get_loss_question_letter_answer(
-    model,
+    model: LlamaForCausalLM,
     batch,
     device: torch.device,
-    tokenizer: AutoTokenizer,
+    tokenizer: LlamaTokenizer,
 ):
     prompts = batch
 
@@ -54,10 +90,17 @@ def get_loss_question_letter_answer(
         padding=True,
     ).to(device)
     logits = model(**model.prepare_inputs_for_generation(**tokens)).logits
+    print(logits.shape)
     return -get_log_probs(logits, tokens["input_ids"]).mean()
 
 
-def sample_tokens(model, tokenizer, device, prompts=test_prompts, max_length=15):
+def sample_tokens(
+    model: LlamaForCausalLM,
+    tokenizer: LlamaTokenizer,
+    device,
+    prompts=test_prompts,
+    max_length=15,
+):
     model.eval()
     generated_texts = []
 
@@ -91,7 +134,10 @@ def create_prompt(point) -> str:
 
 
 def get_loss_and_acc(
-    model, tokens, last_pos_label_ids, label_possibilities
+    model: LlamaForCausalLM,
+    tokens: torch.Tensor,
+    last_pos_label_ids: torch.Tensor,
+    label_possibilities: list[int],
 ) -> tuple[torch.Tensor, float]:
     logits = model(**model.prepare_inputs_for_generation(**tokens)).logits[:, -1, :]
     loss = torch.nn.functional.cross_entropy(logits, last_pos_label_ids)
@@ -99,3 +145,37 @@ def get_loss_and_acc(
     logits[:, label_impossibilities] = -float("inf")
     acc = (logits.argmax(dim=-1) == last_pos_label_ids).float().sum().item()
     return loss, acc, logits[:, label_possibilities].detach().cpu().numpy()
+
+
+def process_batch(
+    batch: list[Point],
+    device: torch.device,
+    tokenizer: LlamaTokenizer,
+    label_possibilities: list[int],
+    train_on_wrong_answer: bool = False,
+    print_a_prompt: bool = False,
+    print_prefix: str = "prompts",
+):
+    prompts = [create_prompt(point) for point in batch]
+    if print_a_prompt:
+        print(f"{print_prefix}: {prompts}")
+    tokens = tokenizer(
+        prompts,
+        return_tensors="pt",
+        max_length=MAX_SEQ_LEN,
+        truncation=True,
+        padding=True,
+    ).to(device)
+
+    def get_answer(point):
+        if train_on_wrong_answer:
+            return random.Random(point["question"]).choice(
+                [i for i in range(len(doc_to_choice)) if i != point["answer"]]
+            )
+        else:
+            return point["answer"]
+
+    last_pos_label_ids = torch.tensor(
+        [label_possibilities[get_answer(point)] for point in batch], device=device
+    )
+    return tokens, last_pos_label_ids
