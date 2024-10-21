@@ -92,8 +92,8 @@ def run_on_gpu(cfg: Experiment, gpu_id: int):
     print(f"Result on GPU {gpu_id}: {cfg.exp_name}")
 
 
-def gpu_monitor(task_queue, max_gpus: int = 3):
-    active_processes = {}
+def gpu_monitor(task_queue: mp.Queue[Experiment], max_gpus: int = 3):
+    active_processes: Dict[int, mp.Process] = {}
 
     while True:
         # Check for available GPUs
