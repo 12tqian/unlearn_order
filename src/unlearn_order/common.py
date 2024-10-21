@@ -35,7 +35,7 @@ class ExpConfig(BaseConfig):
 
     model_name: str = "meta-llama/Meta-Llama-3-8B"
     batch_size: int = 4
-    lr: float = 3e-5
+    lr: float = 3e-6
 
     use_lora: bool = False
     lora_rank: int = 64

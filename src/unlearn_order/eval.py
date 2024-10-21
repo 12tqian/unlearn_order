@@ -21,10 +21,11 @@ def eval_dataset(
     for batch in dataloader:
         input_ids = batch["input_ids"].to(model.device)
         labels = batch["labels"].to(model.device)
-        output = model(input_ids=input_ids, labels=labels, return_dict=True)
+        with torch.no_grad():
+            output = model(input_ids=input_ids, labels=labels, return_dict=True)
 
         # for each, do byte length normalized completion probability
-        # then do the averag
+        # then do the average
         logits = output.logits
         log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
 

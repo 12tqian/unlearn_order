@@ -193,7 +193,7 @@ def get_eval_dataloader(dataset, tokenizer, batch_size=8):
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=True,
+        shuffle=False,
         collate_fn=partial(collate_eval_batch, tokenizer=tokenizer),
     )
     return dataloader
