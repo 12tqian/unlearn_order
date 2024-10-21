@@ -27,6 +27,51 @@ def eval_dataset(
         # for each, do byte length normalized completion probability
         # then do the average
         logits = output.logits
+        shift_logits = logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+        loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
+        loss = loss_fct(
+            shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
+        )
+        loss = loss.view(shift_labels.size())
+
+        # Sum across the sequence length to get the total loss for each sample
+        per_sample_loss = loss.sum(dim=1)
+        per_sample_loss = per_sample_loss.view(-1, n_choices)
+        completion_choice = per_sample_loss.argmin(dim=-1)
+
+        answers = torch.tensor(batch["answers"], device=model.device)
+
+        n_correct += (answers == completion_choice).sum().item()
+        n_total += answers.shape[0]
+
+    accuracy = n_correct / n_total
+
+    return accuracy
+
+
+def _eval_dataset(
+    model: LlamaForCausalLM, tokenizer: LlamaTokenizer, dataset, batch_size=8
+):
+    torch.cuda.empty_cache()
+
+    n_choices = len(doc_to_choice)
+    new_batch_size = batch_size // n_choices
+    new_batch_size = max(1, new_batch_size)
+    dataloader = get_eval_dataloader(dataset, tokenizer, batch_size=new_batch_size)
+    model.eval()
+
+    n_correct = 0
+    n_total = 0
+    for batch in dataloader:
+        input_ids = batch["input_ids"].to(model.device)
+        labels = batch["labels"].to(model.device)
+        with torch.no_grad():
+            output = model(input_ids=input_ids, labels=labels, return_dict=True)
+
+        # for each, do byte length normalized completion probability
+        # then do the average
+        logits = output.logits
         log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
 
         # get look ahead

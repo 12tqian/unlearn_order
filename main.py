@@ -62,7 +62,7 @@ def gen_cfgs() -> List[ExpConfig]:
 
 
 def main():
-    launch(gen_cfgs=gen_cfgs)
+    launch(gen_cfgs=gen_cfgs, max_gpus=3)
 
 
 if __name__ == "__main__":

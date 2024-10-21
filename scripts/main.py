@@ -20,6 +20,7 @@ from unlearn_order.common import TaskType, DatasetType, Task, ExpConfig
 import torch.multiprocessing as mp
 from queue import Empty
 from research_tools.config import setup
+from research_tools.utils import set_seed
 import time
 
 
@@ -117,6 +118,8 @@ def gen_cfgs() -> List[ExpConfig]:
 def main(cfg_path: str = None):
     cfg_path = Path(cfg_path)
     cfg = get_cfg(cfg_path)
+    set_seed(cfg.seed)
+
     run_experiment(cfg)
 
 
