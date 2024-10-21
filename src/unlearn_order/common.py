@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
+from research_tools.config import BaseConfig
 
 
 class TaskType(Enum):
@@ -22,12 +23,16 @@ class Task:
 
 
 @dataclass
-class Experiment:
+class ExpConfig(BaseConfig):
     hf_access_token: Optional[str] = None
     exp_name: str = "test"
+    seed = 42
     results_dir: str = "./results/random_bd"
-    env_dir: str = ".env"
     data_dir: str = "./data/random_bd"
+    env_dir: str = ".env"
+    python_path: str = "/mnt/align1_drive/tcqian/unlearning_order/venv/bin/python"
+    script_path: str = "scripts/main.py"
+
     model_name: str = "meta-llama/Meta-Llama-3-8B"
     batch_size: int = 4
     lr: float = 3e-6

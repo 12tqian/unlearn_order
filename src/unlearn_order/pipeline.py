@@ -1,13 +1,13 @@
 from pathlib import Path
 from .finetune import finetune_model
 from .eval import eval_dataset
-from .common import TaskType, DatasetType, Task, Experiment
+from .common import TaskType, DatasetType, Task, ExpConfig
 from transformers import LlamaForCausalLM, LlamaTokenizer
 from .dataset import load_dataset
 import pandas as pd
 
 
-def run_pipeline(model: LlamaForCausalLM, tokenizer: LlamaTokenizer, cfg: Experiment):
+def run_pipeline(model: LlamaForCausalLM, tokenizer: LlamaTokenizer, cfg: ExpConfig):
     data_dir = Path(cfg.data_dir)
 
     splits = cfg.splits

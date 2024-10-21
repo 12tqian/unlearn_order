@@ -16,17 +16,18 @@ from dataclasses import dataclass
 from omegaconf import OmegaConf
 from typing import List, Tuple
 from enum import Enum
-from unlearn_order.common import TaskType, DatasetType, Task, Experiment
+from unlearn_order.common import TaskType, DatasetType, Task, ExpConfig
 import torch.multiprocessing as mp
 from queue import Empty
+from research_tools.config import setup
 import time
 
 
 def get_default_cfg():
-    return Experiment()
+    return ExpConfig()
 
 
-def get_cfg(cfg_path: Path) -> Experiment:
+def get_cfg(cfg_path: Path) -> ExpConfig:
     if cfg_path is None:
         return get_default_cfg()
 
@@ -34,28 +35,14 @@ def get_cfg(cfg_path: Path) -> Experiment:
         print(f"Config file {cfg_path} not found.")
         raise FileNotFoundError(f"Config file {cfg_path} not found.")
 
-    schema = OmegaConf.structured(Experiment)
+    schema = OmegaConf.structured(ExpConfig)
     cfg = OmegaConf.load(cfg_path)
     cfg = OmegaConf.merge(schema, cfg)
 
     return cfg
 
 
-hf_access_token = None
-
-
-def setup(cfg: Experiment) -> Experiment:
-    env_path = Path(cfg.env_dir)
-    if os.path.exists(env_path):
-        dotenv.load_dotenv(env_path, verbose=True)
-        print("Loaded environment variables from .env file.")
-
-    hf_access_token = os.getenv("HUGGINGFACE_API_KEY")
-    cfg.hf_access_token = hf_access_token
-    return cfg
-
-
-def run_experiment(cfg: Experiment):
+def run_experiment(cfg: ExpConfig):
     cfg = setup(cfg)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -65,7 +52,7 @@ def run_experiment(cfg: Experiment):
     model = model.to(device)
 
     tokenizer: LlamaTokenizer = AutoTokenizer.from_pretrained(
-        cfg.model_name, token=hf_access_token
+        cfg.model_name, token=cfg.hf_access_token
     )
     tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = "left"
@@ -82,7 +69,7 @@ def run_experiment(cfg: Experiment):
     results = run_pipeline(model, tokenizer, cfg)
 
 
-def gen_cfgs() -> List[Experiment]:
+def gen_cfgs() -> List[ExpConfig]:
     cfg_list = []
 
     def get_tasks(task_type: TaskType, test_idx: int):
@@ -117,7 +104,7 @@ def gen_cfgs() -> List[Experiment]:
                 Task(task_type=TaskType.FINETUNE, dataset_type=DatasetType.TRAIN)
             )
             task_list.extend(get_tasks(TaskType.EVAL, 0))
-            cfg = Experiment(
+            cfg = ExpConfig(
                 task_order=task_list,
                 exp_name=f"finetune_{finetune_idx}_unlearn_{unlearn_idx}",
             )
