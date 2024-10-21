@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 
 class TaskType(Enum):
@@ -23,6 +23,7 @@ class Task:
 
 @dataclass
 class Experiment:
+    hf_access_token: Optional[str] = None
     exp_name: str = "test"
     results_dir: str = "./results/random_bd"
     env_dir: str = ".env"
@@ -39,6 +40,5 @@ class Experiment:
     n_train: int = 1
     n_val: int = 1
     eval_every: int = 5
-    hf_access_token: str = None
     model_dtype: str = "bfloat16"
     task_order: List[Task] = field(default_factory=list)

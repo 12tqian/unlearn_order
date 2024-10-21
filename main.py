@@ -5,87 +5,18 @@ sys.path.append("./src")
 import os
 import dotenv
 from pathlib import Path
-import torch
 from research_tools import get_gpus_available
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers import LlamaForCausalLM, LlamaTokenizer
-from peft import get_peft_model, LoraConfig
-from unlearn_order.dataset import load_dataset
-from unlearn_order.pipeline import run_pipeline
 import fire
 from dataclasses import dataclass
 from omegaconf import OmegaConf
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from enum import Enum
 from unlearn_order.common import TaskType, DatasetType, Task, Experiment
-import torch.multiprocessing as mp
 from queue import Empty
 import time
+import multiprocessing as mp
 
-
-def get_default_cfg():
-    return Experiment()
-
-
-def get_cfg(cfg_path: Path) -> Experiment:
-    if cfg_path is None:
-        return get_default_cfg()
-
-    if not cfg_path.exists():
-        print(f"Config file {cfg_path} not found.")
-        raise FileNotFoundError(f"Config file {cfg_path} not found.")
-
-    schema = OmegaConf.structured(Experiment)
-    cfg = OmegaConf.load(cfg_path)
-    cfg = OmegaConf.merge(schema, cfg)
-
-    return cfg
-
-
-hf_access_token = None
-
-
-def setup(cfg: Experiment) -> Experiment:
-    env_path = Path(cfg.env_dir)
-    if os.path.exists(env_path):
-        dotenv.load_dotenv(env_path, verbose=True)
-        print("Loaded environment variables from .env file.")
-
-    hf_access_token = os.getenv("HUGGINGFACE_API_KEY")
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-        [str(i) for i in get_gpus_available()]
-    )
-    cfg.hf_access_token = hf_access_token
-    return cfg
-
-
-def run_experiment(cfg: Experiment):
-    cfg = setup(cfg)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    assert device.type == "cuda", "No GPU available."
-
-    model: LlamaForCausalLM = AutoModelForCausalLM.from_pretrained(
-        cfg.model_name, token=cfg.hf_access_token, torch_dtype=cfg.model_dtype
-    )
-    model = model.to(device)
-
-    tokenizer: LlamaTokenizer = AutoTokenizer.from_pretrained(
-        cfg.model_name, token=hf_access_token
-    )
-    tokenizer.pad_token_id = tokenizer.eos_token_id
-    tokenizer.padding_side = "left"
-
-    if cfg.use_lora:
-        lora_config = LoraConfig(
-            r=cfg.lora_rank,
-            lora_alpha=cfg.lora_alpha,
-            target_modules=["q_proj", "v_proj"],
-        )
-
-        model = get_peft_model(model, lora_config)
-
-    results = run_pipeline(model, tokenizer, cfg)
+PYTHON = Path("/mnt/align1_drive/tcqian/unlearning_order/venv/bin/python")
 
 
 def gen_cfgs() -> List[Experiment]:
@@ -133,16 +64,30 @@ def gen_cfgs() -> List[Experiment]:
     return cfg_list
 
 
+def run_python_script(env_variables: Dict[str, str], args: Dict[str, str]):
+    cmd = ""
+    for k, v in env_variables.items():
+        cmd += f"{k}={v} "
+    cmd += f"{PYTHON} scripts/main.py "
+    for k, v in args.items():
+        cmd += f"--{k} {v} "
+
+    print(f"Running command: {cmd}")
+    os.system(cmd)
+
+
 def run_on_gpu(cfg: Experiment, gpu_id: int):
     # Set the visible GPU for this process
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-    print(f"Running on GPU: {gpu_id}")
 
-    # Now, GPU 0 (the only visible one to this process) is actually the assigned one
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    assert device.type == "cuda", "No GPU available."
+    result_dir = Path(cfg.results_dir) / cfg.exp_name
+    os.makedirs(result_dir, exist_ok=True)
 
-    results = run_experiment(cfg)
+    cfg_path = result_dir / "config.yaml"
+    OmegaConf.save(cfg, cfg_path)
+
+    results = run_python_script(
+        {"CUDA_VISIBLE_DEVICES": str(gpu_id)}, {"cfg_path": cfg_path}
+    )
 
     print(f"Result on GPU {gpu_id}: {cfg.exp_name}")
 
@@ -162,8 +107,7 @@ def gpu_monitor(task_queue, max_gpus: int = 3):
                 # check if we are using too many GPUs, if keep waiting
                 if len(active_processes) >= max_gpus:
                     print("Too many active processes. Waiting for one to finish.")
-                    time.sleep(1)
-                    continue
+                    break
                 try:
                     # Get a new task from the queue if available
                     cfg = task_queue.get_nowait()
@@ -177,7 +121,7 @@ def gpu_monitor(task_queue, max_gpus: int = 3):
                     return  # Exit the monitor when all tasks are completed
 
         # Sleep for a bit before polling again
-        time.sleep(1)
+        time.sleep(20)
 
 
 def main():

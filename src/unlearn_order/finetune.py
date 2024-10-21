@@ -51,7 +51,9 @@ def finetune_model(
         # for step, batch in enumerate(tqdm(dataloader)):
         for step, batch in enumerate(dataloader):
             input_ids = batch["input_ids"].to(model.device)
+            # how much memory is this taking up?
             labels = batch["labels"].to(model.device)
+
             output = model(input_ids=input_ids, labels=labels, return_dict=True)
             loss = output.loss
             loss.backward()
