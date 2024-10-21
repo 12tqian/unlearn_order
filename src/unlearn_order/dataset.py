@@ -190,6 +190,7 @@ def get_finetune_dataloader(dataset, tokenizer, batch_size=8, shuffle_labels=Fal
 
 
 def get_eval_dataloader(dataset, tokenizer, batch_size=8):
+    # TODO(tcqian): why does shuffle need to be False? figure this out
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
