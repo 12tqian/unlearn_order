@@ -32,6 +32,7 @@ class ExpConfig(BaseConfig):
     env_dir: str = ".env"
     python_path: str = "/mnt/align1_drive/tcqian/unlearning_order/venv/bin/python"
     script_path: str = "scripts/main.py"
+    skip_existing: bool = True
 
     model_name: str = "meta-llama/Meta-Llama-3-8B"
     batch_size: int = 4

@@ -1,5 +1,6 @@
 from pathlib import Path
 from datasets import Dataset
+from datasets.combine import interleave_datasets
 from typing import List
 import torch
 import json
@@ -197,3 +198,10 @@ def get_eval_dataloader(dataset, tokenizer, batch_size=8):
         collate_fn=partial(collate_eval_batch, tokenizer=tokenizer),
     )
     return dataloader
+
+
+def merge_datasets(datasets: List[Dataset]) -> Dataset:
+    data = []
+    for dataset in datasets:
+        data.extend(list(dataset.data))
+    return Dataset.from_list(data)
