@@ -28,9 +28,3 @@ class BaseAlgo(ABC, nn.Module):
 
     def forward(self, forget_batch, retain_batch):
         return self.get_loss(forget_batch, retain_batch)
-
-    
-
-
-
-

@@ -7,7 +7,7 @@ from copy import deepcopy
 # we will check completions
 
 
-class RMU(BaseAlgo):
+class GA(BaseAlgo):
 
     def __init__(
         self,
