@@ -5,8 +5,10 @@ import numpy as np
 import torch
 from transformers import AdamW
 import tqdm as tqdm
-
+from typing import List
+import argparse
 from .utils import load_model, get_params, forward_with_cache, get_data
+from transformers import LlamaForCausalLM
 
 
 def run_rmu(
@@ -154,77 +156,66 @@ def run_rmu(
 
     tokenizer.truncation_side = truncation_side
     # Save model
-    return updated_model, tokenizer
+    if args.output_dir:
+        path = args.output_dir
+    else:
+        date = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        path = f"models/{args.model_name_or_path}_alpha-{args.alpha}_batches-{num_batches}_layer-{args.layer_id}_{date}"
+    updated_model.save_pretrained(path)
+    tokenizer.save_pretrained(path)
+    print(f"Saved model to {path}")
 
 
-def get_args():
-    import argparse
+def run_rmu_wrapper(
+    model_name_or_path: str = "HuggingFaceH4/zephyr-7b-beta",
+    module_str: str = "{model_name}.model.layers[{layer_id}]",
+    output_dir: str = None,
+    retain_corpora: List[str] = ["wikitext", "wikitext"],
+    forget_corpora: List[str] = ["bio-forget-corpus", "cyber-forget-corpus"],
+    alpha: List[int] = [100, 100],
+    steering_coeffs: List[int] = [20, 20],
+    lr: float = 5e-5,
+    min_len: int = 0,
+    max_len: int = 2000,
+    batch_size: int = 4,
+    max_num_batches: int = 80,
+    layer_id: int = 7,
+    layer_ids: List[int] = [5, 6, 7],
+    param_ids: List[int] = [6],
+    seed: int = 42,
+    verbose: bool = False,
+):
 
     parser = argparse.ArgumentParser()
-    ### Model arguments
+    parser.add_argument("--model_name_or_path", type=str, default=model_name_or_path)
+    parser.add_argument("--module_str", type=str, default=module_str)
+    parser.add_argument("--output_dir", type=str, default=output_dir)
+    parser.add_argument("--retain_corpora", type=str, default=",".join(retain_corpora))
+    parser.add_argument("--forget_corpora", type=str, default=",".join(forget_corpora))
+    parser.add_argument("--alpha", type=str, default=",".join(map(str, alpha)))
     parser.add_argument(
-        "--model_name_or_path", type=str, default="HuggingFaceH4/zephyr-7b-beta"
+        "--steering_coeffs", type=str, default=",".join(map(str, steering_coeffs))
     )
-    parser.add_argument(
-        "--module_str", type=str, default="{model_name}.model.layers[{layer_id}]"
-    )
-    parser.add_argument("--output_dir", type=str, default=None)
-    ### Data arguments
-    parser.add_argument(
-        "--retain_corpora",
-        type=str,
-        default="wikitext,wikitext",
-        help="comma-separated list of corpora to retain",
-    )
-    parser.add_argument(
-        "--forget_corpora",
-        type=str,
-        default="bio-forget-corpus,cyber-forget-corpus",
-        help="comma-separated list of corpora to forget",
-    )
-    ### rmu hyperparameters
-    parser.add_argument("--alpha", type=str, default="100,100", help="retain weight")
-    parser.add_argument(
-        "--steering_coeffs",
-        type=str,
-        default="20,20",
-        help="Steer vector weight in order of topic",
-    )
-    parser.add_argument("--lr", type=float, default=5e-5, help="learning rate")
-    parser.add_argument("--min_len", type=int, default=0)
-    parser.add_argument("--max_len", type=int, default=2000)
-    parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument("--max_num_batches", type=int, default=80)
-    parser.add_argument("--layer_id", type=int, default=7, help="layer to unlearn")
-    parser.add_argument("--layer_ids", type=str, default="5,6,7", help="update layers")
-    parser.add_argument("--param_ids", type=str, default="6", help="update params")
-    parser.add_argument("--seed", type=int, default=42, help="Seed")
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Logging the activations norms and cosine at each step",
-    )
+    parser.add_argument("--lr", type=float, default=lr)
+    parser.add_argument("--min_len", type=int, default=min_len)
+    parser.add_argument("--max_len", type=int, default=max_len)
+    parser.add_argument("--batch_size", type=int, default=batch_size)
+    parser.add_argument("--max_num_batches", type=int, default=max_num_batches)
+    parser.add_argument("--layer_id", type=int, default=layer_id)
+    parser.add_argument("--layer_ids", type=str, default=",".join(map(str, layer_ids)))
+    parser.add_argument("--param_ids", type=str, default=",".join(map(str, param_ids)))
+    parser.add_argument("--seed", type=int, default=seed)
+    parser.add_argument("--verbose", action="store_true", default=verbose)
 
-    args = parser.parse_args()
-    args.retain_corpora = args.retain_corpora.split(",")
-    args.forget_corpora = args.forget_corpora.split(",")
-    args.steering_coeff_list = [float(c) for c in args.steering_coeffs.split(",")]
-    args.alpha = [float(c) for c in args.alpha.split(",")]
-    args.layer_ids = [int(layer_id) for layer_id in args.layer_ids.split(",")]
-    args.param_ids = [int(param_id) for param_id in args.param_ids.split(",")]
-    return args
-
-
-if __name__ == "__main__":
-    args = get_args()
+    args = parser.parse_args([])
 
     SEED = args.seed
     torch.cuda.manual_seed(SEED)
     torch.cuda.manual_seed_all(SEED)
     torch.manual_seed(SEED)
     np.random.seed(SEED)
-
     frozen_model, tokenizer = load_model(args.model_name_or_path)
+    print("HI")
     updated_model, tokenizer = load_model(args.model_name_or_path)
     forget_data_list, retain_data_list = get_data(
         args.forget_corpora,

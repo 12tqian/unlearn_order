@@ -1,5 +1,4 @@
 from ..base import BaseAlgo
-from .unlearn import run_rmu
 from copy import deepcopy
 
 # context mask
@@ -8,7 +7,6 @@ from copy import deepcopy
 
 
 class GA(BaseAlgo):
-
     def __init__(
         self,
         model,

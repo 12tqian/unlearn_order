@@ -1,6 +1,7 @@
 from ..base import BaseAlgo
 from copy import deepcopy
 
+
 class RA(BaseAlgo):
     def __init__(
         self,
