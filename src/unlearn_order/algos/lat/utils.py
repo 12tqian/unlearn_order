@@ -1,7 +1,8 @@
 import torch
+from torch import nn
 from peft import PeftModel
 from transformers import LlamaForCausalLM
-from typing import Union, Dict
+from typing import Union, Dict, List
 
 
 def log_1_minus_p_loss(
@@ -50,7 +51,12 @@ def get_layer_module(model: Union[PeftModel, LlamaForCausalLM], layer: int):
         return model.model.layers[layer]
 
 
-def set_model_grads(model: LlamaForCausalLM, requires_grad: bool):
+def set_params_grads(params: List[nn.Parameter], requires_grad: bool):
+    for param in params:
+        param.requires_grad = requires_grad
+
+
+def set_model_grads(model: nn.Module, requires_grad: bool):
     for param in model.parameters():
         param.requires_grad = requires_grad
 

@@ -25,7 +25,6 @@ class Adversary(nn.Module):
         epsilon: float,
     ):
         super(Adversary, self).__init__()
-        self.model = model
         self.hidden_size = model.config.hidden_size
         self.attack_mask = attack_mask
         self.epsilon = epsilon
@@ -43,8 +42,7 @@ class Adversary(nn.Module):
         )
 
     def set_attack_grads(self, requires_grad: bool):
-        for param in self.model.parameters():
-            param.requires_grad = requires_grad
+        self.attack.requires_grad = requires_grad
 
     def forward(self, x: torch.Tensor):
         x[self.attack_mask] += self.attack[self.attack_mask]
@@ -119,6 +117,8 @@ def get_towards_away_loss(
         "towards": towards_loss,
         "away": away_loss,
     }
+    # for k, v in losses.items():
+    #     v.backward(retain_graph=True)
     return losses
 
 
@@ -137,16 +137,14 @@ def projected_gradient_descent(
         "sft": 1.0,
     },
 ):
-    set_model_grads(False)
+    set_model_grads(model, False)
 
-    adv_mask = batch["adv_labels_mask"]
-    def_mask = batch["def_labels_mask"]
-
-    attack_mask = torch.any(torch.stack([adv_mask, def_mask]), dim=0)
+    attack_mask = batch["prompt_mask"]
 
     if attack_completions:
-        prompt_mask = batch["prompt_mask"]
-        attack_mask = torch.any(torch.stack([attack_mask, prompt_mask]), dim=0)
+        adv_mask = batch["adv_labels_mask"]
+        def_mask = batch["def_labels_mask"]
+        attack_mask = torch.any(torch.stack([attack_mask, adv_mask, def_mask]), dim=0)
 
     adversary = Adversary(model, attack_mask, epsilon)
 
@@ -164,7 +162,7 @@ def projected_gradient_descent(
             losses = get_towards_away_loss(model, batch)
 
         # TODO(tcqian): investigate gradient clipping and nans
-        total_loss = sum(combine_losses(losses.values(), loss_coefs))
+        total_loss = sum(combine_losses(losses, loss_coefs).values())
         total_loss.backward()
         optimizer.step()
 
@@ -179,6 +177,7 @@ class LATModel(nn.Module):
         self,
         model: LlamaForCausalLM,
         tokenizer: LlamaTokenizer,
+        n_def_per_adv_steps: int = 4,
         loss_coefs: Dict[str, float] = {
             "towards": 1.0,
             "away": 1.0,
@@ -202,10 +201,6 @@ class LATModel(nn.Module):
         self.loss_coefs = loss_coefs
         self.lr_adv = lr_adv
 
-    def set_model_grads(self, requires_grad: bool):
-        for param in self.model.parameters():
-            param.requires_grad = requires_grad
-
     def train_adversary(self, batch: Dict[str, torch.Tensor]):
         """
         Run projected gradient descent. You shouldn't add to completion. Let's say you add in the 12th layer. Then just look at last token position to find the limit.
@@ -227,8 +222,8 @@ class LATModel(nn.Module):
         sft_batch: Dict[str, torch.Tensor],
         adversary: Adversary,
     ):
-        self.set_model_grads(True)
-        adversary.set_attack_grads(False)
+        set_model_grads(self.model, True)
+        set_model_grads(adversary, False)
 
         with add_hooks(
             module_forward_hooks=[
