@@ -31,6 +31,7 @@ def eval_dataset(
         # for each, do byte length normalized completion probability
         # then do the average
         logits = output.logits
+        print(logits.shape)
         labels[attention_mask == 0] = -100
         shift_logits = logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
@@ -40,6 +41,8 @@ def eval_dataset(
             reduction="none",
         )
         loss = loss.view(shift_labels.size())
+        # print(logits)
+        
         # for i in range(len(shift_labels)):
         # print(logits[i])
 
@@ -47,7 +50,9 @@ def eval_dataset(
         # normalization time!
         # print(loss)
 
+        # print(labels, labels.shape)
         per_sample_loss = loss.sum(dim=1)
+        print(per_sample_loss)
         byte_lengths = torch.tensor(batch["byte_length"], device=model.device)
         byte_lengths = byte_lengths.view(-1)
         # per_sample_loss = per_sample_loss / byte_lengths
