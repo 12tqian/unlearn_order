@@ -1,9 +1,15 @@
 from ..base import BaseAlgo
 from copy import deepcopy
+from torch.optim import Adam
+from tqdm import tqdm
 
 # context mask
 # evaluation will always be on multiple choice cause i'm lazy af
 # we will check completions
+
+
+def run_ga(model, tokenizer, forget_dataset, retain_dataset, alpha, n_epochs, lr):
+    optimizer = Adam(model.parameters(), lr=lr)
 
 
 class GA(BaseAlgo):

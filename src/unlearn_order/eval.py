@@ -1,8 +1,10 @@
 from transformers import LlamaForCausalLM, LlamaTokenizer
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 import torch
 from .utils import doc_to_choice
 from .dataset import get_eval_dataloader
+from torch.nn import functional as F
 
 
 def eval_dataset(
@@ -18,31 +20,46 @@ def eval_dataset(
 
     n_correct = 0
     n_total = 0
-    for batch in dataloader:
+    for batch in tqdm(dataloader, desc="Evaluating"):
         input_ids = batch["input_ids"].to(model.device)
         labels = batch["labels"].to(model.device)
+        attention_mask = batch["attention_mask"].to(model.device)
         with torch.no_grad():
-            output = model(input_ids=input_ids, labels=labels, return_dict=True)
-
+            output = model(
+                input_ids=input_ids, attention_mask=attention_mask, return_dict=True
+            )
         # for each, do byte length normalized completion probability
         # then do the average
         logits = output.logits
+        labels[attention_mask == 0] = -100
         shift_logits = logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
-        loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
-        loss = loss_fct(
-            shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
+        loss = F.cross_entropy(
+            shift_logits.view(-1, shift_logits.size(-1)),
+            shift_labels.view(-1),
+            reduction="none",
         )
         loss = loss.view(shift_labels.size())
+        # for i in range(len(shift_labels)):
+        # print(logits[i])
 
         # Sum across the sequence length to get the total loss for each sample
+        # normalization time!
+        # print(loss)
+
         per_sample_loss = loss.sum(dim=1)
+        byte_lengths = torch.tensor(batch["byte_length"], device=model.device)
+        byte_lengths = byte_lengths.view(-1)
+        # per_sample_loss = per_sample_loss / byte_lengths
+        # print(byte_lengths)
         per_sample_loss = per_sample_loss.view(-1, n_choices)
+        # print(loss.shape, per_sample_loss.shape)
         completion_choice = per_sample_loss.argmin(dim=-1)
 
         answers = torch.tensor(batch["answers"], device=model.device)
+        # print(answers, completion_choice)
 
-        n_correct += (answers == completion_choice).sum().item()
+        n_correct += (answers == completion_choice).sum().detach().item()
         n_total += answers.shape[0]
 
     accuracy = n_correct / n_total

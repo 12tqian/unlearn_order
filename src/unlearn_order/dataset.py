@@ -6,7 +6,7 @@ import torch
 import json
 from torch.utils.data import DataLoader
 from transformers import LlamaTokenizer
-from .utils import create_prompt_letter_answer, process_batch
+from .utils import create_prompt_letter_answer, create_prompt
 from functools import partial
 from copy import deepcopy
 
@@ -14,6 +14,8 @@ from copy import deepcopy
 def load_dataset(data_dir: Path, files: List[Path]):
     data = []
     for file in files:
+        # check if ends with .jsonl if not append
+        file = file if file.endswith(".jsonl") else file + ".jsonl"
         with open(data_dir / file, "r") as f:
             data.extend(f.readlines())
     data = [json.loads(d) for d in data]
@@ -80,50 +82,100 @@ def _get_dataloader(
 # i need the completion mask
 # that's all i need
 
-from unlearn_order.utils import create_prompt, create_prompt_letter_answer
-
 
 def format_single(batch, tokenizer, max_length=512, shuffle_labels=False):
+    """
+    very sus manual padding
+    """
     if shuffle_labels:
         new_batch = batch.copy()
         new_batch["answer"] = torch.randint(0, len(new_batch["choices"]), (1,)).item()
         batch = new_batch
+
     prompt_str = create_prompt(batch)
     full_answer_str = create_prompt_letter_answer(batch)
+    completion_str = full_answer_str[len(prompt_str) :]
+
     prompt = tokenizer(
         prompt_str,
         return_tensors="pt",
-        padding=True,
+        padding=False,
         truncation=True,
-        max_length=max_length,
     )
-    full_answer = tokenizer(
-        full_answer_str,
+    completion = tokenizer(
+        completion_str,
         return_tensors="pt",
         padding="max_length",
         truncation=True,
-        max_length=max_length,
     )
 
-    prompt_mask = torch.zeros_like(full_answer["input_ids"])
+    input_ids = torch.cat([prompt["input_ids"], completion["input_ids"]], dim=-1)
+    attention_mask = torch.cat(
+        [prompt["attention_mask"], completion["attention_mask"]], dim=-1
+    )
+    # assert all 1s
+    assert (attention_mask == 1).all()
+    prompt_mask = torch.zeros_like(input_ids)
     prompt_mask[:, : prompt["input_ids"].shape[1]] = 1
+    # pad to max_length at beginning
+    pad_id = tokenizer.pad_token_id
+    input_ids = torch.cat(
+        [
+            input_ids,
+            torch.full(
+                (input_ids.shape[0], max_length - input_ids.shape[1]),
+                pad_id,
+                dtype=torch.long,
+            ),
+        ],
+        dim=-1,
+    )
+    attention_mask = torch.cat(
+        [
+            attention_mask,
+            torch.zeros(
+                (attention_mask.shape[0], max_length - attention_mask.shape[1]),
+                dtype=torch.long,
+            ),
+        ],
+        dim=-1,
+    )
+    prompt_mask = torch.cat(
+        [
+            prompt_mask,
+            torch.zeros(
+                (prompt_mask.shape[0], max_length - prompt_mask.shape[1]),
+                dtype=torch.long,
+            ),
+        ],
+        dim=-1,
+    )
 
-    batch["input_ids"] = full_answer["input_ids"]
-    batch["attention_mask"] = full_answer["attention_mask"]
+    batch["input_ids"] = input_ids
+    batch["attention_mask"] = attention_mask
     batch["prompt_mask"] = prompt_mask
+
     batch["prompt_str"] = prompt_str
     batch["full_str"] = full_answer_str
-    labels = full_answer["input_ids"].clone()
+    labels = input_ids.clone()
     labels[prompt_mask.bool()] = -100
 
     batch["labels"] = labels
+    # utf-8 byte length
+    batch["byte_length"] = len(completion_str.encode("utf-8"))
 
     return batch
 
 
 def collate_batch(batches, tokenizer, shuffle_labels=False):
-    max_length = max(
-        [len(tokenizer.encode(create_prompt_letter_answer(batch))) for batch in batches]
+    max_length = (
+        max(
+            [
+                len(tokenizer.encode(create_prompt_letter_answer(batch)))
+                for batch in batches
+            ]
+        )
+        + 5
     )
 
     batches = [
@@ -141,14 +193,26 @@ def collate_batch(batches, tokenizer, shuffle_labels=False):
         "prompt_str": [batch["prompt_str"] for batch in batches],
         "full_str": [batch["full_str"] for batch in batches],
         "prompt_mask": torch.stack([batch["prompt_mask"][0] for batch in batches]),
+        "attention_mask": torch.stack(
+            [batch["attention_mask"][0] for batch in batches]
+        ),
     }
     return batch
 
 
 def collate_eval_batch(batches, tokenizer, shuffle_labels=False):
-    max_length = max(
-        [len(tokenizer.encode(create_prompt_letter_answer(batch))) for batch in batches]
-    )
+    max_length = 0
+    for batch in batches:
+        for i in range(len(batch["choices"])):
+            new_batch = batch.copy()
+            new_batch["answer"] = i
+            max_length = max(
+                max_length,
+                len(tokenizer.encode(create_prompt_letter_answer(new_batch))),
+            )
+
+    max_length += 5
+
     new_batches = []
     answers = []
     for batch in batches:
@@ -174,6 +238,10 @@ def collate_eval_batch(batches, tokenizer, shuffle_labels=False):
         "prompt_str": [batch["prompt_str"] for batch in batches],
         "full_str": [batch["full_str"] for batch in batches],
         "prompt_mask": torch.stack([batch["prompt_mask"][0] for batch in batches]),
+        "attention_mask": torch.stack(
+            [batch["attention_mask"][0] for batch in batches]
+        ),
+        "byte_length": torch.tensor([batch["byte_length"] for batch in batches]),
     }
     return batch
 
