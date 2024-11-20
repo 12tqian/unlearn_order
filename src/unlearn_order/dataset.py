@@ -109,9 +109,9 @@ def format_single(batch, tokenizer, max_length=512, shuffle_labels=False):
         truncation=True,
     )
 
-    input_ids = torch.cat([prompt["input_ids"], completion["input_ids"]], dim=-1)
+    input_ids = torch.cat([prompt["input_ids"], completion["input_ids"][:, 1:]], dim=-1)
     attention_mask = torch.cat(
-        [prompt["attention_mask"], completion["attention_mask"]], dim=-1
+        [prompt["attention_mask"], completion["attention_mask"][:, 1:]], dim=-1
     )
     # assert all 1s
     assert (attention_mask == 1).all()

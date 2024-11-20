@@ -84,6 +84,18 @@ def create_answer_letter_answer(point: Point) -> str:
     )
 
 
+def create_prompt_answer_only(point: Point) -> str:
+    return "\n".join(
+        [point["question"]]
+        + [f"{doc_to_choice[i]}. {c}" for i, c in enumerate(point["choices"])]
+        + [
+            f"Answer: {doc_to_choice[i]}"
+            for i, c in enumerate(point["choices"])
+            if i == point["answer"]
+        ]
+    )
+
+
 def get_loss_question_letter_answer(
     model: LlamaForCausalLM,
     batch,

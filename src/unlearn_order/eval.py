@@ -24,14 +24,18 @@ def eval_dataset(
         input_ids = batch["input_ids"].to(model.device)
         labels = batch["labels"].to(model.device)
         attention_mask = batch["attention_mask"].to(model.device)
+
         with torch.no_grad():
             output = model(
-                input_ids=input_ids, attention_mask=attention_mask, return_dict=True
+                input_ids=input_ids,
+                attention_mask=attention_mask.bool(),
+                return_dict=True,
             )
         # for each, do byte length normalized completion probability
         # then do the average
         logits = output.logits
-        print(logits.shape)
+
+        # print(logits.shape)
         labels[attention_mask == 0] = -100
         shift_logits = logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
@@ -52,12 +56,13 @@ def eval_dataset(
 
         # print(labels, labels.shape)
         per_sample_loss = loss.sum(dim=1)
-        print(per_sample_loss)
         byte_lengths = torch.tensor(batch["byte_length"], device=model.device)
         byte_lengths = byte_lengths.view(-1)
         # per_sample_loss = per_sample_loss / byte_lengths
         # print(byte_lengths)
         per_sample_loss = per_sample_loss.view(-1, n_choices)
+        # print((labels != -100).float().sum())
+        # print(input_ids)
         # print(loss.shape, per_sample_loss.shape)
         completion_choice = per_sample_loss.argmin(dim=-1)
 
