@@ -203,6 +203,39 @@ def process_batch(
     return tokens, last_pos_label_ids
 
 
+def my_log_1_minus_p_loss(
+    logits: torch.Tensor, labels: torch.Tensor, ignore_index: int = -100
+):
+    """
+    Computes a custom loss based on log(1 - p) for the specified labels.
+
+    Args:
+        logits (torch.Tensor): Model output logits of shape (batch_size, num_classes).
+        labels (torch.Tensor): Ground truth labels of shape (batch_size,).
+        ignore_index (int): Specifies a target value that is ignored in the loss computation.
+
+    Returns:
+        torch.Tensor: The computed loss (scalar).
+    """
+    # Mask out ignored labels
+    mask = labels != ignore_index
+
+    # Apply softmax to logits to get probabilities
+    probs = F.softmax(logits, dim=-1)
+
+    # Gather probabilities corresponding to the true labels
+    true_probs = probs[torch.arange(len(labels)), labels]
+
+    # Compute log(1 - p) and mask out ignored labels
+    log_1_minus_p = torch.log(1 - true_probs)
+    log_1_minus_p = log_1_minus_p[mask]
+
+    # Compute mean loss
+    loss = -log_1_minus_p.mean()  # Negative for gradient descent
+
+    return loss
+
+
 def log_1_minus_p_loss(
     logits: torch.Tensor, labels: torch.Tensor, threshold: float = -5.0
 ):
@@ -287,7 +320,13 @@ def my_loss(
     labels: torch.Tensor,
     is_away: bool = False,
 ):
-    logits = model(input_ids=input_ids, attention_mask=attention_mask).logits
+    output = model(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        labels=labels,
+        return_dict=True,
+    )
+    logits = output.logits
 
     # Shift logits and labels for causal LM
     shifted_logits = logits[:, :-1, :].contiguous()  # Exclude last token for prediction
@@ -302,5 +341,6 @@ def my_loss(
     return (
         F.cross_entropy(shifted_logits, shifted_labels)
         if not is_away
-        else log_1_minus_p_loss(shifted_logits, shifted_labels)
+        # else log_1_minus_p_loss(shifted_logits, shifted_labels)
+        else my_log_1_minus_p_loss(shifted_logits, shifted_labels)
     )

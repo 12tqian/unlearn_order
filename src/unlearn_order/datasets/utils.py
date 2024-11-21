@@ -66,7 +66,7 @@ DATASETS_DICT = {
             f"wmdp-deduped/fwf_corpus_split_{i}" for i in range(5)
         ],
         "retain_files": [
-            "wikitext/wikitext_dataset",
+            "fineweb-edu/corpus_split_0",
         ],
         "val_retain_files": [
             f"mmlu_cats_random_trimmed/mmlu_{MMLU_CATS_RETAIN[i]}" for i in range(5)
