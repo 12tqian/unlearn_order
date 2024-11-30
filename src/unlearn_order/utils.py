@@ -341,6 +341,6 @@ def my_loss(
     return (
         F.cross_entropy(shifted_logits, shifted_labels)
         if not is_away
-        # else log_1_minus_p_loss(shifted_logits, shifted_labels)
-        else my_log_1_minus_p_loss(shifted_logits, shifted_labels)
+        else log_1_minus_p_loss(shifted_logits, shifted_labels)
+        # else my_log_1_minus_p_loss(shifted_logits, shifted_labels)
     )
