@@ -20,7 +20,7 @@ def evaluate(
     original_fields = ["input_ids", "attention_mask", "labels"]
 
     aux_fields = ["answer", "completion_byte_len", "completion_mask", "length"]
-    fields = original_fields + aux_fields   
+    fields = original_fields + aux_fields
     dataset = [{k: v for k, v in rec.items() if k in fields} for rec in records]
 
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)

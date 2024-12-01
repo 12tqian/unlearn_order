@@ -1,3 +1,8 @@
+from pathlib import Path
+from typing import List
+import json
+from datasets import Dataset
+
 from enum import Enum, auto
 from pathlib import Path
 
@@ -39,3 +44,14 @@ DATASETS_DICT = {
         "retain_dev_file": "mmlu_cats_random_trimmed/dev",
     },
 }
+
+
+def load_dataset(data_dir: Path, files: List[str]):
+    data = []
+    for file in files:
+        # check if ends with .jsonl if not append
+        file = file if file.endswith(".jsonl") else file + ".jsonl"
+        with open(data_dir / file, "r") as f:
+            data.extend(f.readlines())
+    data = [json.loads(d) for d in data]
+    return Dataset.from_list(data)
