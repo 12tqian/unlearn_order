@@ -144,18 +144,7 @@ def train_gd(
     if eval_at_start:
         run_eval("Start")
 
-    layers = list(range(2, 7 + 1))
-    params = []
-    for layer in layers:
-        params.extend(model.model.layers[layer].mlp.parameters())
-
-    for p in model.parameters():
-        p.requires_grad = False
-
-    for p in params:
-        p.requires_grad = True
-
-    optimizer = torch.optim.Adam(params, lr=lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     for epoch in range(n_epochs):
         train_epoch_gd(
