@@ -13,25 +13,38 @@ def train_step_gd(
     retain_batch: Dict,
     forget_alpha: float = 0.1,
     use_log_1_minus_p: bool = True,
+    retain_both: bool = False,
 ):
-    forget_batch = fix_seq_len(forget_batch, ["input_ids", "attention_mask", "labels"])
-    retain_batch = fix_seq_len(retain_batch, ["input_ids", "attention_mask", "labels"])
+    forget_batch = fix_seq_len(forget_batch, ["input_ids", "attention_mask", "labels", "completion_mask"])
+    retain_batch = fix_seq_len(retain_batch, ["input_ids", "attention_mask", "labels", "completion_mask"])
 
     forget_input_ids = forget_batch["input_ids"].to(model.device)
     forget_attention_mask = forget_batch["attention_mask"].to(model.device)
     forget_labels = forget_batch["labels"].to(model.device)
+    forget_completion_mask = forget_batch["completion_mask"].to(model.device)
 
     retain_input_ids = retain_batch["input_ids"].to(model.device)
     retain_attention_mask = retain_batch["attention_mask"].to(model.device)
     retain_labels = retain_batch["labels"].to(model.device)
+    retain_completion_mask = retain_batch["completion_mask"].to(model.device)
+
+    forget_labels[~forget_completion_mask.bool()] = -100
+    retain_labels[~retain_completion_mask.bool()] = -100
+    
+    forget_is_away = use_log_1_minus_p
+    forget_sign = 1 if use_log_1_minus_p else -1
+    
+    if retain_both:
+        forget_is_away = False
+        forget_sign = 1
 
     forget_loss = get_token_loss(
         model,
-        is_away=use_log_1_minus_p,
+        is_away=forget_is_away,
         input_ids=forget_input_ids,
         attention_mask=forget_attention_mask,
         labels=forget_labels,
-    ) * (1 if use_log_1_minus_p else -1)
+    ) * forget_sign
 
     forget_loss = forget_loss * forget_alpha
     forget_loss.backward()
@@ -66,9 +79,9 @@ def train_epoch_gd(
     epoch: int,
     forget_train_records: List[Dict],
     retain_train_records: List[Dict],
+    retain_both: bool = False,
     batch_size: int = 4,
     forget_alpha: float = 0.1,
-    lr: float = 3e-5,
     log_steps: int = 50,
     grad_accum_steps: int = 1,
     use_log_1_minus_p: bool = True,
@@ -85,7 +98,7 @@ def train_epoch_gd(
         pbar := tqdm(enumerate(zip(forget_dataloader, retain_dataloader)))
     ):
         loss_dict = train_step_gd(
-            model, forget_batch, retain_batch, forget_alpha, use_log_1_minus_p
+            model, forget_batch, retain_batch, forget_alpha, use_log_1_minus_p, retain_both=retain_both
         )
 
         for k, v in loss_dict.items():
@@ -126,13 +139,14 @@ def train_gd(
     forget_train_records: List[Dict],
     retain_train_records: List[Dict],
     eval_records_dict: Dict[str, List[Dict]],
+    retain_both: bool = False,
     batch_size: int = 4,
     forget_alpha: float = 0.1,
     lr: float = 3e-5,
     log_steps: int = 50,
     eval_at_start: bool = True,
     grad_accum_steps: int = 1,
-    use_log_1_minus_p: bool = False,
+    use_log_1_minus_p: bool = True,
     eval: bool = True,
 ):
     def run_eval(prefix: str):
@@ -153,9 +167,9 @@ def train_gd(
             epoch,
             forget_train_records,
             retain_train_records,
-            batch_size,
-            forget_alpha,
-            lr=lr,
+            batch_size=batch_size,
+            forget_alpha=forget_alpha,
+            retain_both=retain_both,
             log_steps=log_steps,
             grad_accum_steps=grad_accum_steps,
             use_log_1_minus_p=use_log_1_minus_p,

@@ -71,24 +71,21 @@ def train_ft(
     model: AutoModelForCausalLM,
     n_epochs: int,
     mcq_records: List[Dict],
-    forget_val_1_records: List[Dict],
-    forget_val_2_records: List[Dict],
+    eval_records_dict: Dict[str, List[Dict]],
     batch_size: int = 4,
     lr: float = 3e-5,
     log_steps: int = 50,
     eval_at_start: bool = True,
     grad_accum_steps: int = 1,
 ):
-    if eval_at_start:
-        forget_acc_1 = evaluate(
-            model, forget_val_1_records, batch_size=8, normalize_loss=False
-        )
-        forget_acc_2 = evaluate(
-            model, forget_val_2_records, batch_size=8, normalize_loss=False
-        )
+    def run_eval(prefix: str):
+        if eval:
+            for eval_name, eval_records in eval_records_dict.items():
+                acc = evaluate(model, eval_records, batch_size=8, normalize_loss=False)
+                print(f"{prefix} {eval_name} Accuracy: {acc}")
 
-        print(f"Initial Forget accuracy 1: {forget_acc_1}")
-        print(f"Initial Forget accuracy 2: {forget_acc_2}")
+    if eval_at_start:
+        run_eval("Start")
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
@@ -103,14 +100,7 @@ def train_ft(
             log_steps=log_steps,
             grad_accum_steps=grad_accum_steps,
         )
-        forget_acc_1 = evaluate(
-            model, forget_val_1_records, batch_size=8, normalize_loss=False
-        )
-        forget_acc_2 = evaluate(
-            model, forget_val_2_records, batch_size=8, normalize_loss=False
-        )
 
-        print(f"Epoch {epoch}, Forget accuracy 1: {forget_acc_1}")
-        print(f"Epoch {epoch}, Forget accuracy 2: {forget_acc_2}")
+        run_eval(f"Epoch {epoch}")
 
     return model

@@ -18,6 +18,7 @@ def map_corpus(data: Dict, tokenizer: AutoTokenizer, max_length: int):
         "input_ids": output["input_ids"].squeeze(),
         "attention_mask": output["attention_mask"].squeeze(),
         "labels": output["input_ids"].clone().squeeze(),
+        "completion_mask": output["attention_mask"].clone().squeeze(),
     }
 
 
@@ -26,6 +27,7 @@ def expand_corpus_records(records: List[Dict]):
         rec["input_ids"] = torch.tensor(rec["input_ids"])
         rec["labels"] = torch.tensor(rec["labels"])
         rec["attention_mask"] = torch.tensor(rec["attention_mask"])
+        rec["completion_mask"] = torch.tensor(rec["completion_mask"])
         rec["length"] = rec["input_ids"].size(0)
     return records
 
@@ -41,7 +43,7 @@ def process(
         partial(map_corpus, tokenizer=tokenizer, max_length=max_length)
     )
 
-    keep_cols = ["input_ids", "attention_mask", "labels"]
+    keep_cols = ["input_ids", "attention_mask", "labels", "completion_mask"]
     dataset = dataset.remove_columns(
         [col for col in dataset.column_names if col not in keep_cols]
     )
