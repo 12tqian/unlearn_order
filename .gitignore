@@ -8,3 +8,4 @@ wandb/
 venv/
 results/
 models/
+diff_test/
