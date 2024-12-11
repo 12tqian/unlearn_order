@@ -1,11 +1,12 @@
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from torch import nn
+from typing import Dict
 
 
 def forward_with_cache(
     model: AutoModelForCausalLM,
-    inputs: torch.Tensor,
+    inputs: Dict,
     module: nn.Module,
     no_grad: bool = True,
 ):
