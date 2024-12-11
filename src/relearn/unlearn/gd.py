@@ -145,7 +145,7 @@ def train_epoch_gd(
     return loss_traj
 
 
-def train_gd(
+def _train_gd(
     model: AutoModelForCausalLM,
     n_epochs: int,
     forget_train_records: List[Dict],
@@ -190,4 +190,114 @@ def train_gd(
             use_log_1_minus_p=use_log_1_minus_p,
         )
         run_eval(f"Epoch {epoch}")
+    return model
+
+
+def train_gd(
+    model: AutoModelForCausalLM,
+    n_epochs: int,
+    forget_train_records: Dict[str, List[Dict]],
+    retain_train_records: Dict[str, List[Dict]],
+    eval_records_dict: Dict[str, List[Dict]],
+    retain_both: bool = False,
+    batch_size: int = 4,
+    forget_alpha: float = 0.1,
+    lr: float = 3e-5,
+    log_steps: int = 50,
+    eval_at_start: bool = True,
+    grad_accum_steps: int = 1,
+    use_log_1_minus_p: bool = True,
+    eval: bool = True,
+    params: List = None,
+):
+    def run_eval(prefix: str):
+        if eval:
+            for eval_name, eval_records in eval_records_dict.items():
+                acc = evaluate(model, eval_records, batch_size=8, normalize_loss=False)
+                print(f"{prefix} {eval_name} Accuracy: {acc}")
+
+    if eval_at_start:
+        run_eval("Start")
+
+    optimizer = torch.optim.Adam(
+        params=model.parameters() if params is None else params, lr=lr
+    )
+
+    for epoch in range(n_epochs):
+
+        forget_dataloaders = {
+            k: iter(DataLoader(v, batch_size=batch_size, shuffle=True))
+            for k, v in forget_train_records.items()
+        }
+        retain_dataloaders = {
+            k: iter(DataLoader(v, batch_size=batch_size, shuffle=True))
+            for k, v in retain_train_records.items()
+        }
+
+        min_length = min(len(v) for v in forget_train_records.values())
+        min_length = min(min_length, min(len(v) for v in retain_train_records.values()))
+
+        pbar = tqdm(range(min_length))
+
+        step = 0
+
+        while True:
+
+            try:
+                forget_batches = {k: next(v) for k, v in forget_dataloaders.items()}
+                retain_batches = {k: next(v) for k, v in retain_dataloaders.items()}
+            except StopIteration:
+                break
+
+            losses = {}
+
+            for key in forget_batches:
+                forget_batch = forget_batches[key]
+                forget_batch = fix_seq_len(
+                    forget_batch,
+                    ["input_ids", "attention_mask", "labels", "completion_mask"],
+                )
+
+                forget_loss = get_token_loss(
+                    model,
+                    is_away=True,
+                    input_ids=forget_batch["input_ids"].to(model.device),
+                    attention_mask=forget_batch["attention_mask"].to(model.device),
+                    labels=forget_batch["labels"].to(model.device),
+                )
+
+                forget_loss = forget_loss * forget_alpha
+                forget_loss.backward()
+
+                losses[f"forget_{key}"] = forget_loss.detach().item()
+
+            for key in retain_batches:
+                retain_batch = retain_batches[key]
+                retain_batch = fix_seq_len(
+                    retain_batch,
+                    ["input_ids", "attention_mask", "labels", "completion_mask"],
+                )
+
+                retain_loss = get_token_loss(
+                    model,
+                    is_away=False,
+                    input_ids=retain_batch["input_ids"].to(model.device),
+                    attention_mask=retain_batch["attention_mask"].to(model.device),
+                    labels=retain_batch["labels"].to(model.device),
+                )
+
+                retain_loss.backward()
+                losses[f"retain_{key}"] = retain_loss.detach().item()
+
+            if (step + 1) % grad_accum_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
+
+            pbar.update(1)
+            pbar.set_postfix(losses)
+
+            step += 1
+
+        run_eval(f"Epoch {epoch}")
+
     return model
