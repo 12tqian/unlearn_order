@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from transformers import AdamW
 from tqdm import tqdm
+from torch import nn
 
 
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoModel
@@ -13,7 +14,7 @@ from typing import List, Dict
 from copy import deepcopy
 from torch.utils.data import DataLoader
 from relearn.evaluate.mcq import evaluate
-
+import wandb
 from .utils import forward_with_cache
 
 
@@ -26,127 +27,43 @@ def get_params(model: AutoModelForCausalLM, layers: List[int], module_names: Lis
     return params
 
 
-def _train_rmu(
+def log_examples(
     model: AutoModelForCausalLM,
-    forget_train_records: List[Dict],
-    retain_train_records: List[Dict],
-    eval_records_dict: Dict[str, List[Dict]],
-    magnitude: float = 20,
-    forget_alpha: float = 100,
-    lr: float = 5e-5,
-    batch_size: int = 4,
-    max_batches: int = 150,
-    activation_layer: int = 7,
-    train_layers: List[int] = [5, 6, 7],
-    param_names: List[str] = ["down_proj"],
-    n_epochs: int = 1,
-    eval_at_start: bool = True,
+    tokenizer: AutoTokenizer,
+    table: wandb.Table,
+    epoch: int,
+    key: str,
+    batch: Dict,
+    max_extra_length: int = 30,
 ):
-    def run_eval(prefix: str):
-        if eval:
-            for eval_name, eval_records in eval_records_dict.items():
-                acc = evaluate(model, eval_records, batch_size=8, normalize_loss=False)
-                print(f"{prefix} {eval_name} Accuracy: {acc}")
+    inputs = {
+        "input_ids": batch["input_ids"].to(model.device),
+        "labels": batch["labels"].to(model.device),
+        "attention_mask": batch["attention_mask"].to(model.device),
+    }
+    original_pad_token_id = tokenizer.pad_token_id
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    model.generation_config.pad_token_id = tokenizer.pad_token_id
 
-    if eval_at_start:
-        run_eval("Start")
-    frozen_model = deepcopy(model)
-    frozen_model.eval()
-
-    for param in frozen_model.parameters():
-        param.requires_grad = False
-
-    model.train()
-
-    params = get_params(model, train_layers, param_names)
-
-    for param in model.parameters():
-        param.requires_grad = False
-
-    for param in params:
-        param.requires_grad = True
-
-    optimizer = AdamW(params, lr=lr)
-
-    rng_vec = torch.rand(
-        1, 1, model.config.hidden_size, dtype=model.dtype, device=model.device
+    outputs = model.generate(
+        **inputs,
+        max_length=inputs["input_ids"].shape[-1] + max_extra_length,
+        do_sample=False,
     )
-    control_vec = rng_vec / torch.norm(rng_vec) * magnitude
+    input_texts = tokenizer.batch_decode(inputs["input_ids"], skip_special_tokens=True)
+    output_texts = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+    completions = []
+    for input_text, output_text in zip(input_texts, output_texts):
+        completions.append(output_text[len(input_text) :])
+    prompts = input_texts
+    for prompt, completion in zip(prompts, completions):
+        table.add_data(epoch, prompt, completion)
+    tokenizer.pad_token_id = original_pad_token_id
 
-    updated_module = model.model.layers[activation_layer]
-    frozen_module = frozen_model.model.layers[activation_layer]
+    new_table = wandb.Table(columns=table.columns, data=table.data)
+    wandb.log({f"{key}/examples": new_table}, commit=False)
 
-    n_batches = min(max_batches, len(forget_train_records), len(retain_train_records))
-    n_done = 0
-
-    for epoch in range(n_epochs):
-        if n_done >= n_batches:
-            break
-
-        forget_dataloader = DataLoader(
-            forget_train_records, batch_size=batch_size, shuffle=True
-        )
-        retain_dataloader = DataLoader(
-            retain_train_records, batch_size=batch_size, shuffle=True
-        )
-
-        for forget_batch, retain_batch in (
-            pbar := tqdm(zip(forget_dataloader, retain_dataloader))
-        ):
-            if n_done >= n_batches:
-                break
-            model.zero_grad()
-
-            forget_inputs = {
-                "input_ids": forget_batch["input_ids"].to(model.device),
-                "labels": forget_batch["labels"].to(model.device),
-                "attention_mask": forget_batch["attention_mask"].to(model.device),
-            }
-            forget_activations = forward_with_cache(
-                model, forget_inputs, module=updated_module, no_grad=False
-            ).to(model.device)
-
-            retain_inputs = {
-                "input_ids": retain_batch["input_ids"].to(model.device),
-                "labels": retain_batch["labels"].to(model.device),
-                "attention_mask": retain_batch["attention_mask"].to(model.device),
-            }
-            retain_activations = forward_with_cache(
-                model, retain_inputs, module=updated_module, no_grad=False
-            ).to(model.device)
-            frozen_retain_activations = forward_with_cache(
-                frozen_model, retain_inputs, module=frozen_module, no_grad=True
-            ).to(model.device)
-
-            unlearn_loss = (
-                torch.nn.functional.mse_loss(forget_activations, control_vec)
-                * forget_alpha
-            )
-            retain_loss = torch.nn.functional.mse_loss(
-                retain_activations, frozen_retain_activations
-            )
-
-            loss = unlearn_loss + retain_loss
-
-            loss.backward()
-            optimizer.step()
-
-            n_done += 1
-
-            pbar.set_postfix(
-                {
-                    "Loss": loss.detach().item(),
-                    "Unlearn Loss": unlearn_loss.detach().item(),
-                    "Retain Loss": retain_loss.detach().item(),
-                }
-            )
-
-        run_eval(f"Epoch {epoch}")
-
-    for param in model.parameters():
-        param.requires_grad = True
-
-    return model
+    return table
 
 
 def train_rmu(
@@ -155,7 +72,8 @@ def train_rmu(
     retain_train_records: Dict[str, List[Dict]],
     eval_records_dict: Dict[str, List[Dict]],
     magnitude: float = 20,
-    forget_alpha: float = 100,
+    forget_alphas: Dict[str, float] = {},
+    retain_alphas: Dict[str, float] = {},
     lr: float = 5e-5,
     batch_size: int = 4,
     max_batches: int = 150,
@@ -164,15 +82,50 @@ def train_rmu(
     param_names: List[str] = ["down_proj"],
     n_epochs: int = 1,
     eval_at_start: bool = True,
+    do_eval: bool = True,
+    verbose: bool = False,
+    debug: bool = False,
+    tokenizer: AutoTokenizer = None,
 ):
-    def run_eval(prefix: str):
-        if eval:
+    if max_batches is None:
+        max_batches = int(1e9)
+
+    for key in forget_alphas:
+        assert (
+            key in forget_train_records
+        ), f"{key} not in forget_train_records {forget_train_records.keys()}"
+
+    for key in retain_alphas:
+        assert (
+            key in retain_train_records
+        ), f"{key} not in retain_train_records {retain_train_records.keys()}"
+
+    tables = {}
+
+    def run_eval(epoch: int):
+        if do_eval:
+            log_dict = {"epoch": epoch}
+
             for eval_name, eval_records in eval_records_dict.items():
                 acc = evaluate(model, eval_records, batch_size=8, normalize_loss=False)
-                print(f"{prefix} {eval_name} Accuracy: {acc}")
+
+                log_dict[f"{eval_name}/acc"] = acc
+
+            if verbose:
+                wandb.log(log_dict)
+
+                for key in forget_batches:
+                    tables[key] = log_examples(
+                        model, tokenizer, tables[key], epoch, key, forget_batches[key]
+                    )
+                for key in retain_batches:
+                    tables[key] = log_examples(
+                        model, tokenizer, tables[key], epoch, key, retain_batches[key]
+                    )
 
     if eval_at_start:
-        run_eval("Start")
+        run_eval(-1)
+
     frozen_model = deepcopy(model)
     frozen_model.eval()
 
@@ -191,19 +144,53 @@ def train_rmu(
 
     optimizer = AdamW(params, lr=lr)
 
-    rng_vec = torch.rand(
-        1, 1, model.config.hidden_size, dtype=model.dtype, device=model.device
-    )
-    control_vec = rng_vec / torch.norm(rng_vec) * magnitude
+    control_vecs = {}
+    for key in forget_train_records:
+        rng_vec = torch.rand(
+            1, 1, model.config.hidden_size, dtype=model.dtype, device=model.device
+        )
+        control_vecs[key] = rng_vec / torch.norm(rng_vec) * magnitude
 
     updated_module = model.model.layers[activation_layer]
     frozen_module = frozen_model.model.layers[activation_layer]
 
     n_batches = max_batches
-    n_done = 0
+    global_step = 0
+
+    if verbose:
+        wandb.define_metric("global_step")
+
+        for key in forget_train_records:
+            wandb.define_metric(f"{key}/forget_loss", step_metric="global_step")
+            wandb.define_metric(
+                f"{key}/frozen_forget_activations.norm", step_metric="global_step"
+            )
+            wandb.define_metric(
+                f"{key}/forget_activations.norm", step_metric="global_step"
+            )
+            wandb.define_metric(f"{key}/unlearn_cosine", step_metric="global_step")
+            tables[key] = wandb.Table(columns=["epoch", "prompt", "completion"])
+
+        for key in retain_train_records:
+            wandb.define_metric(f"{key}/retain_loss", step_metric="global_step")
+            wandb.define_metric(
+                f"{key}/retain_activations.norm", step_metric="global_step"
+            )
+            wandb.define_metric(
+                f"{key}/frozen_retain_activations.norm", step_metric="global_step"
+            )
+            wandb.define_metric(f"{key}/retain_cosine", step_metric="global_step")
+            tables[key] = wandb.Table(columns=["epoch", "prompt", "completion"])
+
+        wandb.define_metric("epoch")
+
+        for eval_name in eval_records_dict:
+            wandb.define_metric(f"{eval_name}/acc", step_metric="epoch")
 
     for epoch in range(n_epochs):
-        if n_done >= n_batches:
+
+        # HERE
+        if global_step >= n_batches:
             break
 
         forget_dataloaders = {
@@ -232,7 +219,7 @@ def train_rmu(
         pbar = tqdm(range(min(min_length, n_batches)))
 
         while True:
-            if n_done >= n_batches:
+            if global_step >= n_batches:
                 break
 
             try:
@@ -245,6 +232,7 @@ def train_rmu(
             except StopIteration:
                 break
 
+            log_dict = {}
             losses = {}
 
             for key in forget_batches:
@@ -259,13 +247,34 @@ def train_rmu(
                     model, forget_inputs, module=updated_module, no_grad=False
                 ).to(model.device)
 
-                unlearn_loss = (
-                    torch.nn.functional.mse_loss(forget_activations, control_vec)
-                    * forget_alpha
-                )
-                unlearn_loss.backward()
+                control_vec = control_vecs[key]
 
-                losses[f"forget_{key}"] = unlearn_loss.detach().item()
+                forget_loss = torch.nn.functional.mse_loss(
+                    forget_activations, control_vec
+                )
+
+                if key in forget_alphas:
+                    forget_loss = forget_loss * forget_alphas[key]
+
+                forget_loss.backward()
+
+                losses[f"{key}/forget_loss"] = forget_loss.detach().item()
+
+                if verbose and debug:
+                    frozen_forget_activations = forward_with_cache(
+                        frozen_model, forget_inputs, module=frozen_module, no_grad=True
+                    ).to(model.device)
+                    unlearn_cosine = torch.nn.functional.cosine_similarity(
+                        forget_activations, frozen_forget_activations, dim=-1
+                    ).mean()
+
+                    log_dict[f"{key}/frozen_forget_activations.norm"] = torch.mean(
+                        frozen_forget_activations.norm(dim=-1).mean(dim=1), dim=0
+                    ).item()
+                    log_dict[f"{key}/forget_activations.norm"] = torch.mean(
+                        forget_activations.norm(dim=-1).mean(dim=1), dim=0
+                    ).item()
+                    log_dict[f"{key}/unlearn_cosine"] = unlearn_cosine.item()
 
             for key in retain_batches:
                 retain_batch = retain_batches[key]
@@ -288,19 +297,49 @@ def train_rmu(
                     retain_activations, frozen_retain_activations
                 )
 
+                if key in retain_alphas:
+                    retain_loss = retain_loss * retain_alphas[key]
+
                 retain_loss.backward()
 
-                losses[f"retain_{key}"] = retain_loss.detach().item()
+                losses[f"{key}/retain_loss"] = retain_loss.detach().item()
+
+                if verbose and debug:
+                    frozen_retain_activations = forward_with_cache(
+                        frozen_model, retain_inputs, module=frozen_module, no_grad=True
+                    ).to(model.device)
+                    retain_cosine = torch.nn.functional.cosine_similarity(
+                        retain_activations, frozen_retain_activations, dim=-1
+                    ).mean()
+
+                    log_dict[f"{key}/retain_activations.norm"] = torch.mean(
+                        retain_activations.norm(dim=-1).mean(dim=1), dim=0
+                    ).item()
+                    log_dict[f"{key}/frozen_retain_activations.norm"] = torch.mean(
+                        frozen_retain_activations.norm(dim=-1).mean(dim=1), dim=0
+                    ).item()
+                    log_dict[f"{key}/retain_cosine"] = retain_cosine.item()
 
             optimizer.step()
             optimizer.zero_grad()
 
-            n_done += 1
+            global_step += 1
 
             pbar.set_postfix(losses)
+
+            if verbose:
+                log_dict.update(losses)
+                log_dict["global_step"] = global_step
+                log_dict["epoch"] = epoch
+
+                wandb.log(log_dict)
+
             pbar.update(1)
 
-        run_eval(f"Epoch {epoch}")
+        pbar.close()
+
+        run_eval(epoch)
+        # example completions
 
     for param in model.parameters():
         param.requires_grad = True
