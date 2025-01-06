@@ -1,3 +1,38 @@
+from pathlib import Path
+import dotenv
+import sys
+import os
+
+env_file = "../.env"
+
+if os.path.exists(env_file):
+    dotenv.load_dotenv(env_file, verbose=True)
+    print("Loaded environment variables from .env file.")
+
+cwd = os.getcwd()
+# for some reason appending to PATH you need it to be string
+sys.path.append(str(Path(cwd).parent / "src"))
+
+
+import wandb
+from datasets import load_dataset
+from relearn.datasets.utils import (
+    load_dataset as local_load_dataset,
+    DATASETS_DICT,
+    Datasets,
+)
+from relearn.datasets.corpus import process as process_corpus
+from relearn.datasets.mcq import process as process_mcq
+from pathlib import Path
+
+
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from typing import List, Dict, Optional
+import torch
+from research_tools.utils import set_seed
+import os
+
+
 import os
 import datetime
 
@@ -15,7 +50,27 @@ from copy import deepcopy
 from torch.utils.data import DataLoader
 from relearn.evaluate.mcq import evaluate
 import wandb
-from .utils import forward_with_cache
+from relearn.unlearn.rmu.utils import forward_with_cache
+
+
+import os
+import datetime
+
+import numpy as np
+import torch
+from transformers import AdamW
+from tqdm import tqdm
+from torch import nn
+
+
+from transformers import AutoModelForCausalLM, AutoTokenizer, AutoModel
+from torch.optim import AdamW
+from typing import List, Dict
+from copy import deepcopy
+from torch.utils.data import DataLoader
+from relearn.evaluate.mcq import evaluate
+import wandb
+from relearn.unlearn.rmu.utils import forward_with_cache
 
 
 def get_params(model: AutoModelForCausalLM, layers: List[int], module_names: List[str]):
@@ -102,7 +157,7 @@ def train_rmu(
 
     tables = {}
 
-    def run_eval(epoch: int, log_samples: bool = True):
+    def run_eval(epoch: int, best_acc):
         if do_eval:
             log_dict = {"epoch": epoch}
 
@@ -113,29 +168,28 @@ def train_rmu(
 
             if verbose:
                 wandb.log(log_dict)
-                if log_samples:
+                if log_dict["B/acc"] >= 0.44 and log_dict["retain/acc"] >= 0.55:
+                    if best_acc > log_dict["A/acc"]:
+                        best_acc = log_dict["A/acc"]
+                else:
+                    return None
 
-                    for key in forget_batches:
-                        tables[key] = log_examples(
-                            model,
-                            tokenizer,
-                            tables[key],
-                            epoch,
-                            key,
-                            forget_batches[key],
-                        )
-                    for key in retain_batches:
-                        tables[key] = log_examples(
-                            model,
-                            tokenizer,
-                            tables[key],
-                            epoch,
-                            key,
-                            retain_batches[key],
-                        )
+                for key in forget_batches:
+                    tables[key] = log_examples(
+                        model, tokenizer, tables[key], epoch, key, forget_batches[key]
+                    )
+                for key in retain_batches:
+                    tables[key] = log_examples(
+                        model, tokenizer, tables[key], epoch, key, retain_batches[key]
+                    )
 
+            return best_acc
+
+    best_acc = 1
     if eval_at_start:
-        run_eval(-1, False)
+        new_acc = run_eval(-1, best_acc)
+        if new_acc is None:
+            return best_acc
 
     frozen_model = deepcopy(model)
     frozen_model.eval()
@@ -349,10 +403,137 @@ def train_rmu(
 
         pbar.close()
 
-        run_eval(epoch)
+        new_acc = run_eval(epoch, best_acc)
+
+        if new_acc is None:
+            return best_acc
+
+        best_acc = new_acc
         # example completions
 
     for param in model.parameters():
         param.requires_grad = True
 
-    return model
+    return best_acc
+
+
+def get_records(tokenizer):
+
+    dataset_config = DATASETS_DICT[Datasets.WMDP]
+
+    # retain_dataset = load_dataset("wikitext", "wikitext-2-raw-v1")
+
+    data_dir = Path("../data")
+
+    retain_train = local_load_dataset(data_dir, dataset_config["retain_files"])
+    retain_val = local_load_dataset(data_dir, dataset_config["val_retain_files"])
+
+    unlearn_files = dataset_config["unlearn_files"]
+    val_unlearn_files = dataset_config["val_unlearn_files"]
+
+    n_val_files = 4
+    max_length = 512
+
+    forget_train_1 = local_load_dataset(data_dir, unlearn_files[:n_val_files])
+    forget_train_2 = local_load_dataset(data_dir, unlearn_files[n_val_files:])
+
+    forget_val_1 = local_load_dataset(data_dir, val_unlearn_files[:n_val_files])
+    forget_val_2 = local_load_dataset(data_dir, val_unlearn_files[n_val_files:])
+
+    forget_train_1_records = process_corpus(forget_train_1, tokenizer, max_length)
+    forget_train_2_records = process_corpus(forget_train_2, tokenizer, max_length)
+    retain_train_records = process_corpus(retain_train, tokenizer, max_length)
+    forget_train_records = forget_train_1_records + forget_train_2_records
+
+    forget_train_mcq_1_records = process_mcq(
+        forget_val_1, tokenizer, max_length, expand_choices=False
+    )
+    forget_train_mcq_2_records = process_mcq(
+        forget_val_2, tokenizer, max_length, expand_choices=False
+    )
+    forget_train_mcq_records = forget_train_mcq_1_records + forget_train_mcq_2_records
+
+    forget_val_1_records = process_mcq(forget_val_1, tokenizer, max_length)
+    forget_val_2_records = process_mcq(forget_val_2, tokenizer, max_length)
+    retain_val_records = process_mcq(retain_val, tokenizer, max_length)
+    forget_val_records = forget_val_1_records + forget_val_2_records
+    return (
+        forget_train_1_records,
+        forget_train_2_records,
+        retain_train_records,
+        forget_train_records,
+        forget_train_mcq_records,
+        forget_val_1_records,
+        forget_val_2_records,
+        retain_val_records,
+        forget_val_records,
+    )
+
+
+def objective():
+    wandb.init()
+    config = wandb.config
+    set_seed(42)
+
+    hf_access_token = os.getenv("HUGGINGFACE_API_KEY")
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    assert device == torch.device("cuda")
+    model_id = "HuggingFaceH4/zephyr-7b-beta"
+
+    # Load model directly
+    from transformers import AutoTokenizer, AutoModelForCausalLM
+
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        torch_dtype=torch.bfloat16,
+        trust_remote_code=True,
+        token=hf_access_token,
+    ).to(device)
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+
+    (
+        forget_train_1_records,
+        forget_train_2_records,
+        retain_train_records,
+        forget_train_records,
+        forget_train_mcq_records,
+        forget_val_1_records,
+        forget_val_2_records,
+        retain_val_records,
+        forget_val_records,
+    ) = get_records(tokenizer)
+    eval_dict = {
+        "A": forget_val_1_records,
+        "B": forget_val_2_records,
+        "retain": retain_val_records,
+    }
+
+    best_acc = train_rmu(
+        model,
+        {"A": forget_train_1_records},
+        {"B": forget_train_2_records, "retain": retain_train_records},
+        eval_records_dict=eval_dict,
+        n_epochs=12,
+        magnitude=6.5,
+        lr=1e-5,
+        forget_alphas={"A": config.A_alpha},
+        retain_alphas={"B": config.B_alpha, "retain": 1},
+        eval_at_start=False,
+        max_batches=None,
+        verbose=True,
+        debug=False,
+        tokenizer=tokenizer,
+    )
+    wandb.log({"score": best_acc})
+    return best_acc
+
+
+def main():
+    sweep_id = "62er7wi9"
+    wandb.agent(sweep_id, objective, count=10, project="relearn", entity="12tqian")
+
+
+if __name__ == "__main__":
+    main()
