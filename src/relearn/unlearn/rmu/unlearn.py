@@ -13,7 +13,7 @@ from torch.optim import AdamW
 from typing import List, Dict
 from copy import deepcopy
 from torch.utils.data import DataLoader
-from relearn.evaluate.mcq import evaluate
+from relearn.evaluate import run_eval
 import wandb
 from .utils import forward_with_cache
 
@@ -83,7 +83,7 @@ def train_rmu(
     n_epochs: int = 1,
     eval_at_start: bool = True,
     do_eval: bool = True,
-    verbose: bool = False,
+    use_wandb: bool = False,
     debug: bool = False,
     tokenizer: AutoTokenizer = None,
 ):
@@ -102,40 +102,8 @@ def train_rmu(
 
     tables = {}
 
-    def run_eval(epoch: int, log_samples: bool = True):
-        if do_eval:
-            log_dict = {"epoch": epoch}
-
-            for eval_name, eval_records in eval_records_dict.items():
-                acc = evaluate(model, eval_records, batch_size=8, normalize_loss=False)
-
-                log_dict[f"{eval_name}/acc"] = acc
-
-            if verbose:
-                wandb.log(log_dict)
-                if log_samples:
-
-                    for key in forget_batches:
-                        tables[key] = log_examples(
-                            model,
-                            tokenizer,
-                            tables[key],
-                            epoch,
-                            key,
-                            forget_batches[key],
-                        )
-                    for key in retain_batches:
-                        tables[key] = log_examples(
-                            model,
-                            tokenizer,
-                            tables[key],
-                            epoch,
-                            key,
-                            retain_batches[key],
-                        )
-
     if eval_at_start:
-        run_eval(-1, False)
+        run_eval(model, tokenizer, eval_records_dict, -1)
 
     frozen_model = deepcopy(model)
     frozen_model.eval()
@@ -168,7 +136,7 @@ def train_rmu(
     n_batches = max_batches
     global_step = 0
 
-    if verbose:
+    if use_wandb:
         wandb.define_metric("global_step")
 
         for key in forget_train_records:
@@ -271,7 +239,7 @@ def train_rmu(
 
                 losses[f"{key}/forget_loss"] = forget_loss.detach().item()
 
-                if verbose and debug:
+                if use_wandb and debug:
                     frozen_forget_activations = forward_with_cache(
                         frozen_model, forget_inputs, module=frozen_module, no_grad=True
                     ).to(model.device)
@@ -315,7 +283,7 @@ def train_rmu(
 
                 losses[f"{key}/retain_loss"] = retain_loss.detach().item()
 
-                if verbose and debug:
+                if use_wandb and debug:
                     frozen_retain_activations = forward_with_cache(
                         frozen_model, retain_inputs, module=frozen_module, no_grad=True
                     ).to(model.device)
@@ -338,7 +306,7 @@ def train_rmu(
 
             pbar.set_postfix(losses)
 
-            if verbose:
+            if use_wandb:
                 log_dict.update(losses)
                 log_dict["global_step"] = global_step
                 log_dict["epoch"] = epoch
@@ -349,8 +317,8 @@ def train_rmu(
 
         pbar.close()
 
-        run_eval(epoch)
-        # example completions
+        run_eval(model, tokenizer, eval_records_dict, epoch)
+
 
     for param in model.parameters():
         param.requires_grad = True

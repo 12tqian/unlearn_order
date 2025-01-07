@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from relearn.evaluate.mcq import evaluate
 
 
-def train_step_ft(
+def train_step_rtt(
     model: AutoModelForCausalLM,
     batch: Dict,
 ):
@@ -39,7 +39,7 @@ def train_step_ft(
     return loss_dict
 
 
-def train_epoch_ft(
+def train_epoch_rtt(
     model: AutoModelForCausalLM,
     optimizer: torch.optim.Optimizer,
     epoch: int,
@@ -54,7 +54,7 @@ def train_epoch_ft(
 
     loss_traj = []
     for step, batch in tqdm(enumerate(dataloader)):
-        loss_dict = train_step_ft(model, batch)
+        loss_dict = train_step_rtt(model, batch)
 
         if (step + 1) % grad_accum_steps == 0:
             optimizer.step()
@@ -67,7 +67,7 @@ def train_epoch_ft(
     return loss_traj
 
 
-def train_ft(
+def train_rtt(
     model: AutoModelForCausalLM,
     n_epochs: int,
     mcq_records: List[Dict],
@@ -90,7 +90,7 @@ def train_ft(
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     for epoch in range(n_epochs):
-        train_epoch_ft(
+        train_epoch_rtt(
             model,
             optimizer,
             epoch,

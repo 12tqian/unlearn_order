@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 class Datasets(Enum):
+    MMLU = auto()
     YEARS = auto()
     WMDP = auto()
     RANDOM_BD = auto()
@@ -37,6 +38,28 @@ DATASETS_DICT = {
             f"mmlu_cats_random_trimmed/mmlu_{MMLU_CATS_RETAIN[i]}" for i in range(5)
         ],
     },
+    Datasets.YEARS: {
+        "unlearn_files": [f"dates-years-trimmed/corpus_split_{i}" for i in range(5)],
+        "val_unlearn_files": [f"dates-years-trimmed/split_{i}" for i in range(5)],
+        "retain_files": ["fineweb-edu/corpus_split_0"],
+        "val_retain_files": [
+            f"mmlu_cats_random_trimmed/mmlu_{MMLU_CATS_RETAIN[i]}" for i in range(5)
+        ],
+    },
+    Datasets.MMLU: {
+        "unlearn_files": [
+            f"mmlu_cats_random_trimmed/corpus_mmlu_{MMLU_CATS_FORGET[i]}" for i in range(5)
+        ],
+        "val_unlearn_files": [
+            f"mmlu_cats_random_trimmed/mmlu_{MMLU_CATS_FORGET[i]}" for i in range(5)
+        ],
+        "retain_files": ["fineweb-edu/corpus_split_0"],
+        "val_retain_files": [
+            f"mmlu_cats_random_trimmed/mmlu_{MMLU_CATS_RETAIN[i]}" for i in range(5)
+        ],
+    }
+
+
 }
 
 
