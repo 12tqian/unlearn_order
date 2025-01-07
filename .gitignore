@@ -9,3 +9,5 @@ venv/
 results/
 models/
 diff_test/
+
+.env
