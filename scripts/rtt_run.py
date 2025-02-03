@@ -6,17 +6,16 @@ from typing import Dict, List, Sequence, Union
 
 import fire
 import torch
-import wandb
 from dotenv import load_dotenv
+from research_tools.logging import ColoredLogger
 from research_tools.utils import set_seed
 from slugify import slugify
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+import wandb
 from relearn.attacks.rtt import train_rtt
 from relearn.datasets.utils import VALID_DATASETS, Datasets
 from relearn.unlearn.rmu import train_rmu
-from research_tools.logging import ColoredLogger
-
 
 VALID_MODELS = ["HuggingFaceH4/zephyr-7b-beta"]
 VALID_UNLEARN_METHODS = ["rmu"]
