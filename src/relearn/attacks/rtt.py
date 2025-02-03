@@ -6,7 +6,8 @@ from typing import Dict, List
 from tqdm import tqdm
 from relearn.utils import fix_seq_len
 import torch.nn.functional as F
-from relearn.evaluate.mcq import evaluate
+from relearn.evaluate import run_eval
+import wandb
 
 
 def train_step_rtt(
@@ -48,6 +49,7 @@ def train_epoch_rtt(
     lr: float = 3e-5,
     log_steps: int = 50,
     grad_accum_steps: int = 1,
+    use_wandb: bool = True,
 ):
     model.train()
     dataloader = DataLoader(mcq_records, batch_size=batch_size, shuffle=True)
@@ -62,13 +64,18 @@ def train_epoch_rtt(
 
         loss_traj.append(loss_dict)
         if (step + 1) % log_steps == 0:
-            print(f"Epoch {epoch}, Step {step}, Loss {loss_dict['loss']}")
+            if use_wandb:
+                loss_dict["global_step"] = epoch * len(dataloader) + step
+                wandb.log(loss_dict)
+            else:
+                print(f"Epoch {epoch}, Step {step}, Loss {loss_dict['loss']}")
 
     return loss_traj
 
 
 def train_rtt(
     model: AutoModelForCausalLM,
+    tokenizer: AutoTokenizer,
     n_epochs: int,
     mcq_records: List[Dict],
     eval_records_dict: Dict[str, List[Dict]],
@@ -77,15 +84,23 @@ def train_rtt(
     log_steps: int = 50,
     eval_at_start: bool = True,
     grad_accum_steps: int = 1,
+    use_wandb: bool = True,
 ):
-    def run_eval(prefix: str):
-        if eval:
-            for eval_name, eval_records in eval_records_dict.items():
-                acc = evaluate(model, eval_records, batch_size=8, normalize_loss=False)
-                print(f"{prefix} {eval_name} Accuracy: {acc}")
-
     if eval_at_start:
-        run_eval("Start")
+        res = run_eval(model, tokenizer, eval_records_dict, -1)
+        if use_wandb:
+            wandb.log(res)
+        else:
+            print(res)
+
+    if use_wandb:
+        wandb.define_metric("global_step")
+
+        wandb.define_metric("loss", step_metric="global_step")
+        wandb.define_metric("epoch")
+
+        for eval_name in eval_records_dict:
+            wandb.define_metric(f"{eval_name}/acc", step_metric="epoch")
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
@@ -101,6 +116,10 @@ def train_rtt(
             grad_accum_steps=grad_accum_steps,
         )
 
-        run_eval(f"Epoch {epoch}")
+        res = run_eval(model, tokenizer, eval_records_dict, epoch)
+        if use_wandb:
+            wandb.log(res)
+        else:
+            print(res)
 
     return model

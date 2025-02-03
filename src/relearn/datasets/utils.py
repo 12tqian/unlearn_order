@@ -15,7 +15,13 @@ class Datasets(Enum):
 
 
 # MMLU categories to use for forget loss
-MMLU_CATS_FORGET = ["STEM", "business", "chemistry", "culture", "geography"]
+MMLU_CATS_FORGET = [
+    "geography",
+    "culture",
+    "STEM",
+    "chemistry",
+    "business",
+]
 MMLU_CATS_RETAIN = ["health", "history", "law", "philosophy", "social sciences"]
 
 
@@ -23,9 +29,7 @@ DATASETS_DICT = {
     Datasets.WMDP: {
         "unlearn_files": [f"wmdp-deduped/corpus_split_{i}" for i in range(5)],
         "val_unlearn_files": [f"wmdp-deduped/split_{i}" for i in range(5)],
-        "retain_files": [
-            "fineweb-edu/corpus_split_0",
-        ],
+        "retain_files": [f"fineweb-edu/corpus_split_{i}" for i in range(5)],
         "val_retain_files": [
             f"mmlu_cats_random_trimmed/mmlu_{MMLU_CATS_RETAIN[i]}" for i in range(5)
         ],
@@ -33,7 +37,7 @@ DATASETS_DICT = {
     Datasets.RANDOM_BD: {
         "unlearn_files": [f"random_bd/corpus_split_{i}" for i in range(5)],
         "val_unlearn_files": [f"random_bd/split_{i}" for i in range(5)],
-        "retain_files": ["fineweb-edu/corpus_split_0"],
+        "retain_files": [f"fineweb-edu/corpus_split_{i}" for i in range(5)],
         "val_retain_files": [
             f"mmlu_cats_random_trimmed/mmlu_{MMLU_CATS_RETAIN[i]}" for i in range(5)
         ],
@@ -41,25 +45,24 @@ DATASETS_DICT = {
     Datasets.YEARS: {
         "unlearn_files": [f"dates-years-trimmed/corpus_split_{i}" for i in range(5)],
         "val_unlearn_files": [f"dates-years-trimmed/split_{i}" for i in range(5)],
-        "retain_files": ["fineweb-edu/corpus_split_0"],
+        "retain_files": [f"fineweb-edu/corpus_split_{i}" for i in range(5)],
         "val_retain_files": [
             f"mmlu_cats_random_trimmed/mmlu_{MMLU_CATS_RETAIN[i]}" for i in range(5)
         ],
     },
     Datasets.MMLU: {
         "unlearn_files": [
-            f"mmlu_cats_random_trimmed/corpus_mmlu_{MMLU_CATS_FORGET[i]}" for i in range(5)
+            f"mmlu_cats_random_trimmed/corpus_mmlu_{MMLU_CATS_FORGET[i]}"
+            for i in range(5)
         ],
         "val_unlearn_files": [
             f"mmlu_cats_random_trimmed/mmlu_{MMLU_CATS_FORGET[i]}" for i in range(5)
         ],
-        "retain_files": ["fineweb-edu/corpus_split_0"],
+        "retain_files": [f"fineweb-edu/corpus_split_{i}" for i in range(5)],
         "val_retain_files": [
             f"mmlu_cats_random_trimmed/mmlu_{MMLU_CATS_RETAIN[i]}" for i in range(5)
         ],
-    }
-
-
+    },
 }
 
 

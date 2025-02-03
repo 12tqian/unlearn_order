@@ -90,20 +90,24 @@ def train_rmu(
     if max_batches is None:
         max_batches = int(1e9)
 
-    for key in forget_alphas:
+    for key in forget_train_records:
         assert (
-            key in forget_train_records
+            key in forget_alphas
         ), f"{key} not in forget_train_records {forget_train_records.keys()}"
 
-    for key in retain_alphas:
+    for key in retain_train_records:
         assert (
-            key in retain_train_records
+            key in retain_alphas
         ), f"{key} not in retain_train_records {retain_train_records.keys()}"
 
     tables = {}
 
     if eval_at_start:
-        run_eval(model, tokenizer, eval_records_dict, -1)
+        res = run_eval(model, tokenizer, eval_records_dict, -1)
+        if use_wandb:
+            wandb.log(res)
+        else:
+            print(res)
 
     frozen_model = deepcopy(model)
     frozen_model.eval()
@@ -317,8 +321,11 @@ def train_rmu(
 
         pbar.close()
 
-        run_eval(model, tokenizer, eval_records_dict, epoch)
-
+        res = run_eval(model, tokenizer, eval_records_dict, epoch)
+        if use_wandb:
+            wandb.log(res)
+        else:
+            print(res)
 
     for param in model.parameters():
         param.requires_grad = True
