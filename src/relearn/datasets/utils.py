@@ -24,6 +24,8 @@ MMLU_CATS_FORGET = [
 ]
 MMLU_CATS_RETAIN = ["health", "history", "law", "philosophy", "social sciences"]
 
+VALID_DATASETS = [d.name for d in Datasets]
+
 
 DATASETS_DICT = {
     Datasets.WMDP: {
