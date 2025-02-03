@@ -47,7 +47,7 @@ UNLEARN_CONFIG_DICT = {
             "n_epochs": 10,
             "batch_size": 2,
             "grad_accum_steps": 2,
-        }
+        },
     }
 }
 
@@ -84,7 +84,6 @@ def main(
 
     logger = ColoredLogger("relearn", logging.INFO, save_dir / "log.txt")
 
-
     logger.info(f"Loading data from {CACHE_PATH}")
 
     with open(CACHE_PATH, "rb") as f:
@@ -100,7 +99,6 @@ def main(
         "ds_B_name": ds_B_name,
         "unlearn_config": unlearn_config,
     }
-
 
     logger.info(f"Starting experiment with group_id {group_id}")
 
@@ -121,7 +119,6 @@ def main(
 
     eval_dict = {k: v["val"] for k, v in store.items()}
 
-
     # forget A
     logger.info("Starting forget A")
 
@@ -140,11 +137,11 @@ def main(
         {"A": store["A"]["corpus"]},
         {"B": store["B"]["corpus"], "retain": store["retain"]["corpus"]},
         eval_records_dict=eval_dict,
-        n_epochs=unlearn_config["n_epochs"],
-        magnitude=unlearn_config["magnitude"],
-        lr=unlearn_config["lr"],
-        forget_alphas=unlearn_config["forget_alphas"],
-        retain_alphas=unlearn_config["retain_alphas"],
+        n_epochs=run_config["n_epochs"],
+        magnitude=run_config["magnitude"],
+        lr=run_config["lr"],
+        forget_alphas=run_config["forget_alphas"],
+        retain_alphas=run_config["retain_alphas"],
         eval_at_start=True,
         max_batches=None,
         use_wandb=True,
@@ -159,8 +156,8 @@ def main(
     run.finish()
 
     # forget B
-    logger.info("Starting forget B")
     run_config = unlearn_config["unlearn_B"]
+    logger.info("Starting forget B")
 
     run = wandb.init(
         project="relearn",
@@ -175,16 +172,16 @@ def main(
         {"B": store["B"]["corpus"]},
         {"retain": store["retain"]["corpus"]},
         eval_records_dict=eval_dict,
-        n_epochs=unlearn_config["n_epochs"],
-        magnitude=unlearn_config["magnitude"],
-        lr=unlearn_config["lr"],
-        forget_alphas=unlearn_config["forget_alphas"],
-        retain_alphas=unlearn_config["retain_alphas"],
+        n_epochs=run_config["n_epochs"],
+        magnitude=run_config["magnitude"],
+        lr=run_config["lr"],
+        forget_alphas=run_config["forget_alphas"],
+        retain_alphas=run_config["retain_alphas"],
         eval_at_start=True,
         use_wandb=True,
         debug=False,
         tokenizer=tokenizer,
-        max_batches=unlearn_config["max_batches"],
+        max_batches=run_config["max_batches"],
     )
 
     if save:
