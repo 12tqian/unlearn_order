@@ -61,6 +61,8 @@ def main(
     seed: int = 42,
     device: torch.device = "cuda",
     save: bool = False,
+    load_A_from: str = None,
+    load_B_from: str = None,
 ):
     load_dotenv()
     set_seed(seed)
@@ -92,15 +94,14 @@ def main(
     logger.info(f"Loaded data from {CACHE_PATH}")
 
     unlearn_config = UNLEARN_CONFIG_DICT[unlearn_method]
-    config = {
-        "model_id": model_id,
-        "unlearn_method": unlearn_method,
-        "ds_A_name": ds_A_name,
-        "ds_B_name": ds_B_name,
-        "unlearn_config": unlearn_config,
-    }
 
     logger.info(f"Starting experiment with group_id {group_id}")
+
+    store = {
+        "A": data[Datasets[ds_A_name]]["A"],
+        "B": data[Datasets[ds_B_name]]["B"],
+        "retain": data["retain"],
+    }
 
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
@@ -111,84 +112,90 @@ def main(
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    store = {
-        "A": data[Datasets[ds_A_name]]["A"],
-        "B": data[Datasets[ds_B_name]]["B"],
-        "retain": data["retain"],
-    }
-
     eval_dict = {k: v["val"] for k, v in store.items()}
 
+    if load_B_from and not load_A_from:
+        logger.warning("load_B_from is set but load_A_from is not.")
+
     # forget A
-    logger.info("Starting forget A")
+    if load_A_from:
+        if load_B_from is None:
+            logger.info(f"Loading model from {load_A_from}, loading A only")
+            model = AutoModelForCausalLM.from_pretrained(load_A_from).to(device)
+    else:
+        logger.info("Starting forget A")
 
-    run_config = unlearn_config["unlearn_A"]
+        run_config = unlearn_config["unlearn_A"]
 
-    run = wandb.init(
-        project="relearn",
-        config=run_config,
-        tags=["debug", "unlearn_A"],
-        entity="12tqian",
-        group=group_id,
-    )
+        run = wandb.init(
+            project="relearn",
+            config=run_config,
+            tags=["debug", "unlearn_A"],
+            entity="12tqian",
+            group=group_id,
+        )
 
-    model = train_rmu(
-        model,
-        {"A": store["A"]["corpus"]},
-        {"B": store["B"]["corpus"], "retain": store["retain"]["corpus"]},
-        eval_records_dict=eval_dict,
-        n_epochs=run_config["n_epochs"],
-        magnitude=run_config["magnitude"],
-        lr=run_config["lr"],
-        forget_alphas=run_config["forget_alphas"],
-        retain_alphas=run_config["retain_alphas"],
-        eval_at_start=True,
-        max_batches=None,
-        use_wandb=True,
-        debug=False,
-        tokenizer=tokenizer,
-    )
+        model = train_rmu(
+            model,
+            {"A": store["A"]["corpus"]},
+            {"B": store["B"]["corpus"], "retain": store["retain"]["corpus"]},
+            eval_records_dict=eval_dict,
+            n_epochs=run_config["n_epochs"],
+            magnitude=run_config["magnitude"],
+            lr=run_config["lr"],
+            forget_alphas=run_config["forget_alphas"],
+            retain_alphas=run_config["retain_alphas"],
+            eval_at_start=True,
+            max_batches=None,
+            use_wandb=True,
+            debug=False,
+            tokenizer=tokenizer,
+        )
 
-    if save:
-        logger.info(f"Saving model to {save_dir / 'forget_A'}")
-        model.save_pretrained(save_dir / "forget_A")
+        if save:
+            logger.info(f"Saving model to {save_dir / 'forget_A'}")
+            model.save_pretrained(save_dir / "forget_A")
 
-    run.finish()
+        run.finish()
 
     # forget B
-    run_config = unlearn_config["unlearn_B"]
-    logger.info("Starting forget B")
+    if load_B_from:
+        logger.info(f"Loading model from {load_B_from}")
+        model = AutoModelForCausalLM.from_pretrained(load_B_from).to(device)
+    else:
+        run_config = unlearn_config["unlearn_B"]
+        logger.info("Starting forget B")
 
-    run = wandb.init(
-        project="relearn",
-        config=run_config,
-        tags=["debug", "unlearn_B"],
-        entity="12tqian",
-        group=group_id,
-    )
+        run = wandb.init(
+            project="relearn",
+            config=run_config,
+            tags=["debug", "unlearn_B"],
+            entity="12tqian",
+            group=group_id,
+        )
 
-    model = train_rmu(
-        model,
-        {"B": store["B"]["corpus"]},
-        {"retain": store["retain"]["corpus"]},
-        eval_records_dict=eval_dict,
-        n_epochs=run_config["n_epochs"],
-        magnitude=run_config["magnitude"],
-        lr=run_config["lr"],
-        forget_alphas=run_config["forget_alphas"],
-        retain_alphas=run_config["retain_alphas"],
-        eval_at_start=True,
-        use_wandb=True,
-        debug=False,
-        tokenizer=tokenizer,
-        max_batches=run_config["max_batches"],
-    )
+        model = train_rmu(
+            model,
+            {"B": store["B"]["corpus"]},
+            {"retain": store["retain"]["corpus"]},
+            eval_records_dict=eval_dict,
+            n_epochs=run_config["n_epochs"],
+            magnitude=run_config["magnitude"],
+            lr=run_config["lr"],
+            forget_alphas=run_config["forget_alphas"],
+            retain_alphas=run_config["retain_alphas"],
+            eval_at_start=False,
+            use_wandb=True,
+            debug=False,
+            tokenizer=tokenizer,
+            max_batches=run_config["max_batches"],
+        )
 
-    if save:
-        logger.info(f"Saving model to {save_dir / 'forget_B'}")
-        model.save_pretrained(save_dir / "forget_B")
+        if save:
+            logger.info(f"Saving model to {save_dir / 'forget_B'}")
+            model.save_pretrained(save_dir / "forget_B")
 
-    run.finish()
+        run.finish()
 
     # relearn only A
     logger.info("Starting relearn A")
