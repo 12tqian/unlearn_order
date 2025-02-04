@@ -29,7 +29,7 @@ UNLEARN_CONFIG_DICT = {
         "unlearn_A": {
             "magnitude": 6.5,
             "lr": 1e-5,
-            "n_epochs": 12,
+            "n_epochs": 4,
             "forget_alphas": {"A": 0.39422, "B": 0.39422},
             "retain_alphas": {"B": 13.51609, "retain": 1},
         },
@@ -39,7 +39,6 @@ UNLEARN_CONFIG_DICT = {
             "n_epochs": 1,
             "forget_alphas": {"A": 0.39422, "B": 0.39422},
             "retain_alphas": {"B": 13.51609, "retain": 1},
-            "max_batches": 100,
         },
         "rtt": {
             "lr": 1e-6,
@@ -129,7 +128,7 @@ def main(
         run = wandb.init(
             project="relearn",
             config=run_config,
-            tags=["debug", "unlearn_A"],
+            tags=["unlearn_A"],
             entity="12tqian",
             group=group_id,
         )
@@ -168,7 +167,7 @@ def main(
         run = wandb.init(
             project="relearn",
             config=run_config,
-            tags=["debug", "unlearn_B"],
+            tags=["unlearn_B"],
             entity="12tqian",
             group=group_id,
         )
@@ -187,7 +186,7 @@ def main(
             use_wandb=True,
             debug=False,
             tokenizer=tokenizer,
-            max_batches=run_config["max_batches"],
+            max_batches=None,
         )
 
         if save:
@@ -202,7 +201,7 @@ def main(
     run = wandb.init(
         project="relearn",
         config=run_config,
-        tags=["debug", "rtt"],
+        tags=["rtt"],
         entity="12tqian",
         group=group_id,
     )
@@ -232,5 +231,8 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
-    fire.Fire(main)
+    for n1 in VALID_DATASETS:
+        for n2 in VALID_DATASETS:
+            if n1 == "RANDOM_BD" or n2 == "RANDOM_BD":
+                continue
+            main(ds_A_name=n1, ds_B_name=n2, save=True)
