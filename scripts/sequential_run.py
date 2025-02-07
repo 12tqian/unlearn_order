@@ -18,7 +18,7 @@ from relearn.datasets.utils import VALID_DATASETS, Datasets
 from relearn.unlearn.rmu import train_rmu
 
 VALID_MODELS = ["HuggingFaceH4/zephyr-7b-beta"]
-VALID_UNLEARN_METHODS = ["rmu"]
+VALID_UNLEARN_METHODS = ["rmu_seq"]
 BASE_DIR = Path("/mnt/align4_drive/tcqian/unlearn_order")
 
 CACHE_PATH = BASE_DIR / "data" / "data.pickle"
@@ -31,14 +31,14 @@ UNLEARN_CONFIG_DICT = {
             "lr": 1e-5,
             "n_epochs": 12,
             "forget_alphas": {"A": 0.39422, "B": 0.39422},
-            "retain_alphas": {"B": 13.51609, "retain": 1},
+            "retain_alphas": {"retain": 1},
         },
         "unlearn_B": {
             "magnitude": 6.5,
             "lr": 1e-5,
             "n_epochs": 12,
             "forget_alphas": {"A": 0.39422, "B": 0.39422},
-            "retain_alphas": {"B": 13.51609, "retain": 1},
+            "retain_alphas": {"retain": 1},
             "max_batches": 25,
         },
         "rtt": {
@@ -47,7 +47,30 @@ UNLEARN_CONFIG_DICT = {
             "batch_size": 2,
             "grad_accum_steps": 2,
         },
-    }
+    },
+    "rmu_seq": {
+        "unlearn_A": {
+            "magnitude": 6.5,
+            "lr": 1e-5,
+            "n_epochs": 12,
+            "forget_alphas": {"A": 0.1, "B": 0.1},
+            "retain_alphas": {"retain": 1},
+        },
+        "unlearn_B": {
+            "magnitude": 6.5,
+            "lr": 1e-5,
+            "n_epochs": 12,
+            "forget_alphas": {"A": 0.1, "B": 0.1},
+            "retain_alphas": {"retain": 1},
+            "max_batches": 25,
+        },
+        "rtt": {
+            "lr": 1e-6,
+            "n_epochs": 10,
+            "batch_size": 2,
+            "grad_accum_steps": 2,
+        },
+    },
 }
 
 
@@ -151,7 +174,7 @@ def main(
         model = train_rmu(
             model,
             {"A": store["A"]["corpus"]},
-            {"B": store["B"]["corpus"], "retain": store["retain"]["corpus"]},
+            {"retain": store["retain"]["corpus"]},
             eval_records_dict=eval_dict,
             n_epochs=run_config["n_epochs"],
             magnitude=run_config["magnitude"],
@@ -253,4 +276,4 @@ if __name__ == "__main__":
         for n2 in VALID_DATASETS:
             if n1 == "RANDOM_BD" or n2 == "RANDOM_BD":
                 continue
-            main(ds_A_name=n1, ds_B_name=n2, save=True)
+            main(ds_A_name=n1, ds_B_name=n2, save=True, unlearn_method="rmu_seq")

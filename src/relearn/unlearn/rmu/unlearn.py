@@ -86,6 +86,8 @@ def train_rmu(
     use_wandb: bool = False,
     debug: bool = False,
     tokenizer: AutoTokenizer = None,
+    monitor_name: str = None,
+    monitor_threshold: float = 0.28,
 ):
     if max_batches is None:
         max_batches = int(1e9)
@@ -172,7 +174,6 @@ def train_rmu(
 
     for epoch in range(n_epochs):
 
-        # HERE
         if global_step >= n_batches:
             break
 
@@ -326,6 +327,10 @@ def train_rmu(
             wandb.log(res)
         else:
             print(res)
+
+        if monitor_name is not None:
+            if res[monitor_name] < monitor_threshold:
+                break
 
     for param in model.parameters():
         param.requires_grad = True

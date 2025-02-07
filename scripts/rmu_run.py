@@ -18,28 +18,20 @@ from relearn.datasets.utils import VALID_DATASETS, Datasets
 from relearn.unlearn.rmu import train_rmu
 
 VALID_MODELS = ["HuggingFaceH4/zephyr-7b-beta"]
-VALID_UNLEARN_METHODS = ["rmu"]
+VALID_UNLEARN_METHODS = ["rmu_base"]
 BASE_DIR = Path("/mnt/align4_drive/tcqian/unlearn_order")
 
 CACHE_PATH = BASE_DIR / "data" / "data.pickle"
 CHECKPOINT_DIR = BASE_DIR / "checkpoints"
 
 UNLEARN_CONFIG_DICT = {
-    "rmu": {
+    "rmu_base": {
         "unlearn_A": {
             "magnitude": 6.5,
             "lr": 1e-5,
             "n_epochs": 12,
-            "forget_alphas": {"A": 0.39422, "B": 0.39422},
-            "retain_alphas": {"B": 13.51609, "retain": 1},
-        },
-        "unlearn_B": {
-            "magnitude": 6.5,
-            "lr": 1e-5,
-            "n_epochs": 12,
-            "forget_alphas": {"A": 0.39422, "B": 0.39422},
-            "retain_alphas": {"B": 13.51609, "retain": 1},
-            "max_batches": 25,
+            "forget_alphas": {"A+B": 0.1},
+            "retain_alphas": {"retain": 1},
         },
         "rtt": {
             "lr": 1e-6,
@@ -150,8 +142,8 @@ def main(
 
         model = train_rmu(
             model,
-            {"A": store["A"]["corpus"]},
-            {"B": store["B"]["corpus"], "retain": store["retain"]["corpus"]},
+            {"A+B": store["A"]["corpus"] + store["B"]["corpus"]},
+            {"retain": store["retain"]["corpus"]},
             eval_records_dict=eval_dict,
             n_epochs=run_config["n_epochs"],
             magnitude=run_config["magnitude"],
@@ -169,46 +161,6 @@ def main(
         if save:
             logger.info(f"Saving model to {save_dir / 'forget_A'}")
             model.save_pretrained(save_dir / "forget_A")
-
-        run.finish()
-
-    # forget B
-    if load_B_from:
-        logger.info(f"Loading model from {load_B_from}")
-        model = AutoModelForCausalLM.from_pretrained(load_B_from).to(device)
-    else:
-        run_config = unlearn_config["unlearn_B"]
-        logger.info("Starting forget B")
-
-        run = wandb.init(
-            project="relearn",
-            config=config,
-            tags=["unlearn_B"],
-            entity="12tqian",
-            group=group_id,
-        )
-
-        model = train_rmu(
-            model,
-            {"B": store["B"]["corpus"]},
-            {"retain": store["retain"]["corpus"]},
-            eval_records_dict=eval_dict,
-            n_epochs=run_config["n_epochs"],
-            magnitude=run_config["magnitude"],
-            lr=run_config["lr"],
-            forget_alphas=run_config["forget_alphas"],
-            retain_alphas=run_config["retain_alphas"],
-            eval_at_start=True,
-            use_wandb=True,
-            debug=False,
-            tokenizer=tokenizer,
-            max_batches=run_config["max_batches"],
-            monitor_name="B/acc",
-        )
-
-        if save:
-            logger.info(f"Saving model to {save_dir / 'forget_B'}")
-            model.save_pretrained(save_dir / "forget_B")
 
         run.finish()
 
@@ -253,4 +205,4 @@ if __name__ == "__main__":
         for n2 in VALID_DATASETS:
             if n1 == "RANDOM_BD" or n2 == "RANDOM_BD":
                 continue
-            main(ds_A_name=n1, ds_B_name=n2, save=True)
+            main(ds_A_name=n1, ds_B_name=n2, save=False, unlearn_method="rmu_base")
