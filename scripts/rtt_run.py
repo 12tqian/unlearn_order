@@ -248,9 +248,10 @@ def main(
 
 
 if __name__ == "__main__":
-    # fire.Fire(main)
-    for n1 in VALID_DATASETS:
-        for n2 in VALID_DATASETS:
-            if n1 == "RANDOM_BD" or n2 == "RANDOM_BD":
-                continue
-            main(ds_A_name=n1, ds_B_name=n2, save=True)
+    fire.Fire(main)
+    # main(ds_A_name="WMDP", ds_B_name="WMDP", save=True)
+    # for n1 in VALID_DATASETS:
+    #     for n2 in VALID_DATASETS:
+    #         if n1 == "RANDOM_BD" or n2 == "RANDOM_BD":
+    #             continue
+    #         main(ds_A_name=n1, ds_B_name=n2, save=True)
