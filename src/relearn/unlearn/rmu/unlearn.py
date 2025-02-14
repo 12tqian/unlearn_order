@@ -88,7 +88,7 @@ def train_rmu(
     tokenizer: AutoTokenizer = None,
     monitor_name: str = None,
     monitor_threshold: float = 0.28,
-    **kwargs,
+    base_epoch: int = 0
 ):
     if max_batches is None:
         max_batches = int(1e9)
@@ -97,7 +97,6 @@ def train_rmu(
         assert (
             key in forget_alphas
         ), f"{key} not in forget_train_records {forget_train_records.keys()}"
-
     for key in retain_train_records:
         assert (
             key in retain_alphas
@@ -173,7 +172,7 @@ def train_rmu(
         for eval_name in eval_records_dict:
             wandb.define_metric(f"{eval_name}/acc", step_metric="epoch")
 
-    for epoch in range(n_epochs):
+    for epoch in range(base_epoch, n_epochs + base_epoch):
 
         if global_step >= n_batches:
             break
