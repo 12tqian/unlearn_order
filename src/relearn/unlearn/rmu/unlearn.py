@@ -88,7 +88,10 @@ def train_rmu(
     tokenizer: AutoTokenizer = None,
     monitor_name: str = None,
     monitor_threshold: float = 0.28,
-    base_epoch: int = 0
+    base_epoch: int = 0,
+    control_vecs_init: Dict[str, torch.Tensor] = None,
+    return_control_vecs: bool = False,
+    print_evals: bool  = False
 ):
     if max_batches is None:
         max_batches = int(1e9)
@@ -108,7 +111,7 @@ def train_rmu(
         res = run_eval(model, tokenizer, eval_records_dict, -1)
         if use_wandb:
             wandb.log(res)
-        else:
+        if print_evals:
             print(res)
 
     frozen_model = deepcopy(model)
@@ -135,6 +138,9 @@ def train_rmu(
             1, 1, model.config.hidden_size, dtype=model.dtype, device=model.device
         )
         control_vecs[key] = rng_vec / torch.norm(rng_vec) * magnitude
+    
+    if control_vecs_init is not None:
+        control_vecs.update(control_vecs_init)
 
     updated_module = model.model.layers[activation_layer]
     frozen_module = frozen_model.model.layers[activation_layer]
@@ -325,7 +331,7 @@ def train_rmu(
         res = run_eval(model, tokenizer, eval_records_dict, epoch)
         if use_wandb:
             wandb.log(res)
-        else:
+        if print_evals:
             print(res)
 
         if monitor_name is not None:
@@ -335,4 +341,7 @@ def train_rmu(
     for param in model.parameters():
         param.requires_grad = True
 
+    if return_control_vecs:
+        return model, control_vecs
+    
     return model
