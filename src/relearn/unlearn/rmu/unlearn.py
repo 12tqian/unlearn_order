@@ -88,6 +88,7 @@ def train_rmu(
     tokenizer: AutoTokenizer = None,
     monitor_name: str = None,
     monitor_threshold: float = 0.28,
+    **kwargs,
 ):
     if max_batches is None:
         max_batches = int(1e9)
