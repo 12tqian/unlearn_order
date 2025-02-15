@@ -91,7 +91,7 @@ def train_rmu(
     base_epoch: int = 0,
     control_vecs_init: Dict[str, torch.Tensor] = None,
     return_control_vecs: bool = False,
-    print_evals: bool  = False
+    print_evals: bool = False,
 ):
     if max_batches is None:
         max_batches = int(1e9)
@@ -138,7 +138,7 @@ def train_rmu(
             1, 1, model.config.hidden_size, dtype=model.dtype, device=model.device
         )
         control_vecs[key] = rng_vec / torch.norm(rng_vec) * magnitude
-    
+
     if control_vecs_init is not None:
         control_vecs.update(control_vecs_init)
 
@@ -343,5 +343,5 @@ def train_rmu(
 
     if return_control_vecs:
         return model, control_vecs
-    
+
     return model
