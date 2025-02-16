@@ -3,6 +3,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from typing import Dict, List, Optional
 import itertools
 import wandb
+from relearn.evaluate import run_eval
+import numpy as np
 
 
 import torch
@@ -90,6 +92,8 @@ def super_rmu(
     joint_train: bool = False,
     prefix_forget: bool = True,
     epsilon: float = 1e-6,
+    use_wandb: bool = True,
+    sweeping: bool = False,
 ):
     assert k_folds <= 26, "k_folds must be less than 26"
 
@@ -127,7 +131,9 @@ def super_rmu(
             forget_fold_inds = [i]
 
         cur_lr = (
-            (lr * (k_folds - 1 - i) + lr_end * i) / (k_folds - 1)
+            np.exp(
+                (np.log(lr) * (k_folds - 1 - i) + np.log(lr_end) * i) / (k_folds - 1)
+            )
             if lr_end is not None
             else lr
         )
@@ -164,7 +170,7 @@ def super_rmu(
             },
             lr=cur_lr,
             tokenizer=tokenizer,
-            use_wandb=True,
+            use_wandb=use_wandb,
             eval_at_start=True if i == 0 else False,
             n_epochs=epochs_per_fold,
             max_batches=None,
@@ -175,5 +181,15 @@ def super_rmu(
         )
         control_vecs.update(control_vecs_next)
         base_epoch += epochs_per_fold
+    if sweeping:
+        full_eval = {
+            "forget": forget_records_dict["val"],
+            "retain": retain_records_dict["val"],
+        }
+        res = run_eval(model, tokenizer, full_eval, -1)
+        if use_wandb:
+            wandb.log(res)
+
+        return model, res
 
     return model
