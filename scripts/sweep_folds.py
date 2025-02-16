@@ -89,7 +89,7 @@ def objective():
     forget_acc = res["forget/acc"]
     retain_acc = res["retain/acc"]
 
-    best_acc = forget_acc if retain_acc >= 0.54 else 1
+    best_acc = forget_acc if retain_acc >= 0.54 else 2 - retain_acc
     wandb.log({"score": best_acc})
     return best_acc
 
@@ -103,7 +103,7 @@ def initialize_sweep():
         "parameters": {
             "k_folds": {
                 # "values": [2]
-                "values": [3, 4, 5]
+                "values": [4]
             },
             "epochs_per_fold": {
                 # "values": [1]
@@ -113,13 +113,13 @@ def initialize_sweep():
             "lr_decay": {"distribution": "log_uniform_values", "min": 1e-2, "max": 1},
             "forget_alpha": {
                 "distribution": "log_uniform_values",
-                "min": 0.25,
-                "max": 8,
+                "min": 1e-2,
+                "max": 1e3,
             },
             "retain_alpha": {
                 "distribution": "log_uniform_values",
-                "min": 0.5,
-                "max": 32,
+                "min": 1e-2,
+                "max": 1e3,
             },
         },
     }
