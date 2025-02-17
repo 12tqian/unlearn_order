@@ -82,7 +82,7 @@ def objective():
         lr=config.lr,
         lr_end=config.lr * config.lr_decay,
         joint_train=True,
-        prefix_forget=False,
+        prefix_forget=True,  # i have now set this to true
         sweeping=True,
     )
 

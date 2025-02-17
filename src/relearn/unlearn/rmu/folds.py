@@ -117,6 +117,7 @@ def super_rmu(
             return_control_vecs=True,
             control_vecs_init=control_vecs,
             print_evals=True,
+            monitor_name=f"{fold_name(i)}/acc",
         )
         control_vecs.update(control_vecs_next)
         base_epoch += epochs_per_fold
