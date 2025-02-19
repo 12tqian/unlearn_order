@@ -337,10 +337,10 @@ def train_rmu(
         if print_evals:
             print(res)
 
+        last_eval_dict = res
+
         if res["retain/acc"] < 0.54:
             break
-
-        last_eval_dict = res
 
         if monitor_name is not None:
             if res[monitor_name] < monitor_threshold:

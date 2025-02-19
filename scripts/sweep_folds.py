@@ -86,7 +86,7 @@ def objective():
         prefix_forget=True,  # i have now set this to true, this only works if same optimizer isn't nuking me
         # i should plot gradient magnitudes and stuff over time
         sweeping=True,
-        same_optimizer=True
+        same_optimizer=True,
     )
 
     forget_acc = res["forget/acc"]
@@ -104,8 +104,8 @@ def initialize_sweep():
         "name": "super_rmu",
         "metric": {"goal": "minimize", "name": "score"},
         "parameters": {
-            "k_folds": {"values": [4]},
-            "epochs_per_fold": {"values": [4]},
+            "k_folds": {"values": [2]},
+            "epochs_per_fold": {"values": [12]},
             "lr": {"distribution": "log_uniform_values", "min": 1e-6, "max": 1e-2},
             "lr_decay": {"distribution": "log_uniform_values", "min": 0.75, "max": 1},
             "forget_alpha": {
