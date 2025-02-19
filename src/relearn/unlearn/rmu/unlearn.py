@@ -15,16 +15,7 @@ from copy import deepcopy
 from torch.utils.data import DataLoader
 from relearn.evaluate import run_eval
 import wandb
-from .utils import forward_with_cache
-
-
-def get_params(model: AutoModelForCausalLM, layers: List[int], module_names: List[str]):
-    params = []
-    for layer in layers:
-        for name, param in model.model.layers[layer].named_parameters():
-            if any([module_name in name for module_name in module_names]):
-                params.append(param)
-    return params
+from .utils import forward_with_cache, get_params
 
 
 def log_examples(
@@ -92,6 +83,8 @@ def train_rmu(
     control_vecs_init: Dict[str, torch.Tensor] = None,
     return_control_vecs: bool = False,
     print_evals: bool = False,
+    optimizer: AdamW = None,
+    scheduler: torch.optim.lr_scheduler = None,
 ):
     if max_batches is None:
         max_batches = int(1e9)
@@ -107,12 +100,16 @@ def train_rmu(
 
     tables = {}
 
+    last_eval_dict = None
+
     if eval_at_start:
         res = run_eval(model, tokenizer, eval_records_dict, -1)
         if use_wandb:
             wandb.log(res)
         if print_evals:
             print(res)
+
+        last_eval_dict = res
 
     frozen_model = deepcopy(model)
     frozen_model.eval()
@@ -130,7 +127,8 @@ def train_rmu(
     for param in params:
         param.requires_grad = True
 
-    optimizer = AdamW(params, lr=lr)
+    if optimizer is None:
+        optimizer = AdamW(params, lr=lr)
 
     control_vecs = {}
     for key in forget_train_records:
@@ -328,11 +326,21 @@ def train_rmu(
 
         pbar.close()
 
+        if scheduler is not None:
+            scheduler.step()
+
         res = run_eval(model, tokenizer, eval_records_dict, epoch)
+
         if use_wandb:
             wandb.log(res)
+
         if print_evals:
             print(res)
+
+        if res["retain/acc"] < 0.54:
+            break
+
+        last_eval_dict = res
 
         if monitor_name is not None:
             if res[monitor_name] < monitor_threshold:
@@ -342,6 +350,6 @@ def train_rmu(
         param.requires_grad = True
 
     if return_control_vecs:
-        return model, control_vecs
+        return model, control_vecs, last_eval_dict
 
     return model

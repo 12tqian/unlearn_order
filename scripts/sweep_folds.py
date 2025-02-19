@@ -31,8 +31,6 @@ def objective():
     wandb.init()
     config = wandb.config
 
-    set_seed(42)
-
     hf_access_token = os.getenv("HUGGINGFACE_API_KEY")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -67,6 +65,7 @@ def objective():
     # n_use = 20
     # forget_set = trim_data(data[Datasets.WMDP], n_use)
     # retain_set = trim_data(data["retain"], n_use)
+    set_seed(42)
 
     model, res = super_rmu(
         model,
@@ -80,10 +79,14 @@ def objective():
         retain_alpha=config.retain_alpha,
         epochs_per_fold=config.epochs_per_fold,
         lr=config.lr,
-        lr_end=config.lr * config.lr_decay,
+        lr_decay=config.lr_decay,
+        batch_size=config.batch_size,
+        use_wandb=True,
         joint_train=True,
-        prefix_forget=True,  # i have now set this to true
+        prefix_forget=True,  # i have now set this to true, this only works if same optimizer isn't nuking me
+        # i should plot gradient magnitudes and stuff over time
         sweeping=True,
+        same_optimizer=True
     )
 
     forget_acc = res["forget/acc"]
@@ -101,26 +104,21 @@ def initialize_sweep():
         "name": "super_rmu",
         "metric": {"goal": "minimize", "name": "score"},
         "parameters": {
-            "k_folds": {
-                # "values": [2]
-                "values": [4]
-            },
-            "epochs_per_fold": {
-                # "values": [1]
-                "values": [1, 2, 3]
-            },
-            "lr": {"distribution": "log_uniform_values", "min": 1e-6, "max": 1e-3},
-            "lr_decay": {"distribution": "log_uniform_values", "min": 1e-2, "max": 1},
+            "k_folds": {"values": [4]},
+            "epochs_per_fold": {"values": [4]},
+            "lr": {"distribution": "log_uniform_values", "min": 1e-6, "max": 1e-2},
+            "lr_decay": {"distribution": "log_uniform_values", "min": 0.75, "max": 1},
             "forget_alpha": {
                 "distribution": "log_uniform_values",
-                "min": 1e-2,
+                "min": 1e-3,
                 "max": 1e3,
             },
             "retain_alpha": {
                 "distribution": "log_uniform_values",
-                "min": 1e-2,
+                "min": 1e-3,
                 "max": 1e3,
             },
+            "batch_size": {"values": [4]},
         },
     }
 

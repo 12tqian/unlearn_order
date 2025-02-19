@@ -1,7 +1,7 @@
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from torch import nn
-from typing import Dict
+from typing import Dict, List
 
 
 def forward_with_cache(
@@ -31,3 +31,12 @@ def forward_with_cache(
     hook_handle.remove()
 
     return cache[0]
+
+
+def get_params(model: AutoModelForCausalLM, layers: List[int], module_names: List[str]):
+    params = []
+    for layer in layers:
+        for name, param in model.model.layers[layer].named_parameters():
+            if any([module_name in name for module_name in module_names]):
+                params.append(param)
+    return params
