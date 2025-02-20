@@ -74,6 +74,8 @@ def super_rmu(
     base_epoch = 0
     control_vecs = {}
 
+    penalty = 0
+
     # forget alpha for one fold, two fold
     for i in range(k_folds):
         print(f"Unlearning fold {fold_name(i)}")
@@ -135,6 +137,8 @@ def super_rmu(
             optimizer=optimizer,
             scheduler=scheduler,
         )
+        penalty += 1
+
         if eval_dict["retain/acc"] < 0.54:
             break
 
@@ -148,7 +152,8 @@ def super_rmu(
         res = run_eval(model, tokenizer, full_eval, -1)
 
         if res["retain/acc"] < 0.54:
-            res["retain/acc"] = 0
+            # i hope this gives a better signal
+            res["retain/acc"] = res["retain/acc"] - penalty
 
         if use_wandb:
             wandb.log(res)

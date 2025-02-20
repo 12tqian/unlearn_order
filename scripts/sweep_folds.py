@@ -22,7 +22,8 @@ import fire
 from typing import Optional
 from research_tools.logging import ColoredLogger
 import logging
-
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import multiprocessing as mp
 
 logger = ColoredLogger("relearn", logging.INFO)
 
@@ -38,7 +39,6 @@ def objective():
     model_id = "HuggingFaceH4/zephyr-7b-beta"
 
     # Load model directly
-    from transformers import AutoTokenizer, AutoModelForCausalLM
 
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
@@ -104,8 +104,8 @@ def initialize_sweep():
         "name": "super_rmu",
         "metric": {"goal": "minimize", "name": "score"},
         "parameters": {
-            "k_folds": {"values": [2]},
-            "epochs_per_fold": {"values": [12]},
+            "k_folds": {"values": [3]},
+            "epochs_per_fold": {"values": [8]},
             "lr": {"distribution": "log_uniform_values", "min": 1e-6, "max": 1e-2},
             "lr_decay": {"distribution": "log_uniform_values", "min": 0.75, "max": 1},
             "forget_alpha": {
@@ -130,6 +130,11 @@ def initialize_sweep():
 
 
 def main(sweep_id: Optional[str] = None, n_trials: Optional[int] = 50):
+    # initialize cuda context
+    torch.set_default_device("cuda")
+    torch.cuda.synchronize()
+
+    # print pid
     if sweep_id is None:
         sweep_id = initialize_sweep()
 
