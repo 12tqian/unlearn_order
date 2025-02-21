@@ -39,9 +39,7 @@ def evaluate(
             completion_byte_len = batch["completion_byte_len"].to(model.device)
 
             answers = batch["answer"].to(model.device)
-
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-
             logits = outputs.logits
             labels[~completion_mask.bool()] = -100
             labels[~attention_mask.bool()] = -100
