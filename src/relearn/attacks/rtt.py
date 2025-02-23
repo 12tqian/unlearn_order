@@ -46,7 +46,6 @@ def train_epoch_rtt(
     epoch: int,
     mcq_records: List[Dict],
     batch_size: int = 4,
-    lr: float = 3e-5,
     log_steps: int = 50,
     grad_accum_steps: int = 1,
     use_wandb: bool = True,
@@ -111,7 +110,6 @@ def train_rtt(
             epoch,
             mcq_records,
             batch_size,
-            lr=lr,
             log_steps=log_steps,
             grad_accum_steps=grad_accum_steps,
         )
